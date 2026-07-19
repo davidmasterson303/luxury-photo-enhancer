@@ -1,0 +1,273 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    font-family: 'Inter', 'Montserrat', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background-color: #F9F9F8;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+}
+
+/* ─────────────────────────────────────────
+   ENTRY ANIMATIONS
+───────────────────────────────────────── */
+@keyframes logo-reveal {
+  0% {
+    opacity: 0;
+    letter-spacing: 0.5em;
+    transform: translateY(8px);
+  }
+  100% {
+    opacity: 1;
+    letter-spacing: 0.3em;
+    transform: translateY(0);
+  }
+}
+
+@keyframes logo-reveal-sm {
+  0% {
+    opacity: 0;
+    letter-spacing: 0.4em;
+    transform: translateY(6px);
+  }
+  100% {
+    opacity: 1;
+    letter-spacing: 0.2em;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fade-up {
+  0% {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(-10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.animate-logo-reveal {
+  animation: logo-reveal 1.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  opacity: 0;
+}
+
+.animate-logo-sub {
+  animation: logo-reveal 1.4s cubic-bezier(0.16, 1, 0.3, 1) 0.2s forwards;
+  opacity: 0;
+}
+
+.animate-fade-up {
+  animation: fade-up 1s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  opacity: 0;
+}
+
+.animate-fade-up-d1 { animation-delay: 0.35s; }
+.animate-fade-up-d2 { animation-delay: 0.55s; }
+.animate-fade-up-d3 { animation-delay: 0.75s; }
+.animate-fade-up-d4 { animation-delay: 0.95s; }
+
+.animate-fade-in {
+  animation: fade-in 0.8s ease-out forwards;
+  opacity: 0;
+}
+
+/* ─────────────────────────────────────────
+   DARKROOM PHOTO REVEAL
+───────────────────────────────────────── */
+@keyframes darkroom-reveal {
+  0% {
+    filter: grayscale(100%) blur(12px);
+    transform: scale(1.05);
+  }
+  100% {
+    filter: grayscale(0%) blur(0px);
+    transform: scale(1.0);
+  }
+}
+
+.darkroom-pending {
+  filter: grayscale(100%) blur(12px);
+  transform: scale(1.05);
+}
+
+.darkroom-reveal {
+  animation: darkroom-reveal 1.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* ─────────────────────────────────────────
+   CAMERA OVAL PULSE
+───────────────────────────────────────── */
+@keyframes oval-pulse {
+  0%, 100% { box-shadow: 0 0 20px rgba(201,169,97,0.35), 0 0 0 0 rgba(201,169,97,0.25); }
+  50%       { box-shadow: 0 0 40px rgba(201,169,97,0.55), 0 0 0 12px rgba(201,169,97,0.08); }
+}
+
+@keyframes oval-rotate {
+  from { transform: translate(-50%, -50%) rotate(0deg); }
+  to   { transform: translate(-50%, -50%) rotate(360deg); }
+}
+
+.oval-aura {
+  animation: oval-pulse 2.8s ease-in-out infinite;
+}
+
+.oval-ring {
+  animation: oval-rotate 12s linear infinite;
+}
+
+/* ─────────────────────────────────────────
+   STRUCTURAL PROGRESS LINE (LOADER)
+───────────────────────────────────────── */
+@keyframes line-sweep {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(200%); }
+}
+
+.line-sweep {
+  animation: line-sweep 2.4s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+/* ─────────────────────────────────────────
+   CARD MICRO-INTERACTIONS
+───────────────────────────────────────── */
+.lc-card {
+  position: relative;
+  overflow: hidden;
+  transition: transform 0.5s cubic-bezier(0.16,1,0.3,1),
+              box-shadow 0.5s cubic-bezier(0.16,1,0.3,1);
+}
+
+.lc-card:hover {
+  transform: translateY(-3px);
+}
+
+.lc-card:active {
+  transform: translateY(0) scale(0.99);
+}
+
+.lc-card-icon {
+  transition: transform 0.5s cubic-bezier(0.16,1,0.3,1),
+              opacity 0.5s ease;
+}
+
+.lc-card:hover .lc-card-icon {
+  transform: translateY(-4px);
+}
+
+/* ─────────────────────────────────────────
+   BUTTON FILL EFFECT
+───────────────────────────────────────── */
+.lc-btn-fill {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+.lc-btn-fill::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgba(17,17,17,0.05);
+  transform: translateY(100%);
+  transition: transform 0.45s cubic-bezier(0.16,1,0.3,1);
+  z-index: -1;
+  border-radius: inherit;
+}
+
+.lc-btn-fill:hover::before {
+  transform: translateY(0);
+}
+
+/* ─────────────────────────────────────────
+   KEN BURNS ON VARIATION IMAGES
+───────────────────────────────────────── */
+.lc-kb-wrap {
+  overflow: hidden;
+}
+
+.lc-kb-img {
+  transition: transform 2.2s cubic-bezier(0.16,1,0.3,1);
+}
+
+.lc-kb-wrap:hover .lc-kb-img {
+  transform: scale(1.03);
+}
+
+/* ─────────────────────────────────────────
+   TOAST SLIDE UP (VALIDATION ERROR)
+───────────────────────────────────────── */
+@keyframes toast-slide-up {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 40px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+.animate-toast-up {
+  animation: toast-slide-up 0.5s cubic-bezier(0.16,1,0.3,1) forwards;
+}
+
+@keyframes toast-drop {
+  from {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-toast-drop {
+  animation: toast-drop 0.55s cubic-bezier(0.16,1,0.3,1) forwards;
+}
+
+/* ─────────────────────────────────────────
+   ACCORDION / FOOTER DRAWER
+───────────────────────────────────────── */
+.lc-accordion-body {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.55s cubic-bezier(0.16,1,0.3,1);
+}
+
+.lc-accordion-body.is-open {
+  grid-template-rows: 1fr;
+}
+
+.lc-accordion-body > div {
+  overflow: hidden;
+}
+
+/* ─────────────────────────────────────────
+   MISC UTILITIES
+───────────────────────────────────────── */
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.font-small-caps {
+  font-variant: small-caps;
+  letter-spacing: 0.12em;
+}
