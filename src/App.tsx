@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { ArrowLeft, X } from 'lucide-react';
 import DemoBanner from './components/DemoBanner';
 import WelcomeScreen from './components/WelcomeScreen';
@@ -9,8 +9,10 @@ import ResultsDisplay from './components/ResultsDisplay';
 import LoadingState from './components/LoadingState';
 import { enhanceImage, resizeImageIfNeeded } from './services/imageEnhancement';
 import { validateImageForProfile } from './services/imageValidation';
-import { AppStep, InputMode, PhotoState } from './types';
+import { AppStep, InputMode, PhotoState, VariationStatus } from './types';
 import { AUTO_VARIATION_PROMPTS } from './constants';
+
+const VARIATION_COUNT = AUTO_VARIATION_PROMPTS.length;
 
 function App() {
   const [step, setStep] = useState<AppStep>('welcome');
@@ -20,11 +22,122 @@ function App() {
     enhanced: null,
     file: null,
   });
+  const [variationStatus, setVariationStatus] = useState<VariationStatus[]>(
+    Array(VARIATION_COUNT).fill('pending')
+  );
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string>('');
   const [validationError, setValidationError] = useState<{ message: string; file: File } | null>(null);
   const [showCapture, setShowCapture] = useState(false);
-  const [needsPersonRemoval, setNeedsPersonRemoval] = useState(false);
+
+  // Refs, not state: these are read inside async generation flows that start
+  // in the same tick the value is decided — state would be a stale closure
+  // (which is exactly the bug this replaces: person-removal never applied
+  // on the first generation pass).
+  const personRemovalRef = useRef(false);
+  const resizedFileRef = useRef<File | null>(null);
+  const originalUrlRef = useRef<string | null>(null);
+
+  const releaseOriginalUrl = () => {
+    if (originalUrlRef.current) {
+      URL.revokeObjectURL(originalUrlRef.current);
+      originalUrlRef.current = null;
+    }
+  };
+
+  /* One pipeline for capture, upload, and validation override —
+   * the three previous handlers shared ~90% of their bodies. */
+  const processPhoto = async (file: File, { skipValidation = false } = {}) => {
+    setError('');
+    setValidationError(null);
+    personRemovalRef.current = false;
+
+    if (!skipValidation) {
+      setIsProcessing(true);
+      const validationResult = await validateImageForProfile(file);
+      setIsProcessing(false);
+
+      if (!validationResult.isValid) {
+        setValidationError({
+          message: validationResult.error || 'We couldn’t read that photo clearly. Please try another.',
+          file,
+        });
+        setInputMode(null);
+        return;
+      }
+      personRemovalRef.current = validationResult.needsPersonRemoval || false;
+    }
+
+    releaseOriginalUrl();
+    const originalUrl = URL.createObjectURL(file);
+    originalUrlRef.current = originalUrl;
+
+    setPhotoState({
+      original: originalUrl,
+      enhanced: null,
+      file,
+      variations: Array(VARIATION_COUNT).fill(null),
+    });
+    // Move to the grid immediately — variations fill in as each one lands.
+    setStep('variations');
+    await generateVariations(file, personRemovalRef.current);
+  };
+
+  const runVariation = async (resizedFile: File, index: number, personRemoval: boolean) => {
+    setVariationStatus(prev => prev.map((s, i) => (i === index ? 'pending' : s)));
+    const result = await enhanceImage(
+      resizedFile,
+      AUTO_VARIATION_PROMPTS[index].prompt,
+      undefined,
+      personRemoval
+    );
+    if (result.success && result.enhancedImageUrl) {
+      setPhotoState(prev => ({
+        ...prev,
+        variations: (prev.variations ?? Array(VARIATION_COUNT).fill(null)).map((v, i) =>
+          i === index ? result.enhancedImageUrl! : v
+        ),
+      }));
+      setVariationStatus(prev => prev.map((s, i) => (i === index ? 'done' : s)));
+    } else {
+      setVariationStatus(prev => prev.map((s, i) => (i === index ? 'failed' : s)));
+    }
+    return result;
+  };
+
+  const generateVariations = async (file: File, personRemoval: boolean) => {
+    setVariationStatus(Array(VARIATION_COUNT).fill('pending'));
+    try {
+      const resizedFile = await resizeImageIfNeeded(file);
+      resizedFileRef.current = resizedFile;
+
+      // allSettled + per-slot updates: one failed call no longer throws away
+      // three successful (paid) generations behind a single error screen.
+      const results = await Promise.allSettled(
+        AUTO_VARIATION_PROMPTS.map((_, i) => runVariation(resizedFile, i, personRemoval))
+      );
+
+      const outcomes = results.map(r => (r.status === 'fulfilled' ? r.value : { success: false, error: 'Unexpected error' }));
+      if (outcomes.every(o => !o.success)) {
+        const firstError = outcomes.find(o => o.error)?.error;
+        setError(firstError || 'We couldn’t generate portraits from that photo. Please try another.');
+        setStep('welcome');
+        setInputMode(null);
+      }
+    } catch (err) {
+      console.error('Variation generation error:', err);
+      setError('An unexpected error occurred. Please try again.');
+      setStep('welcome');
+    }
+  };
+
+  /* Regenerate a single style without redoing all four. */
+  const handleRetryVariation = async (index: number) => {
+    const resizedFile = resizedFileRef.current ?? (photoState.file ? await resizeImageIfNeeded(photoState.file) : null);
+    if (!resizedFile) return;
+    setError('');
+    await runVariation(resizedFile, index, personRemovalRef.current);
+  };
 
   const handleSelectMode = (mode: InputMode) => {
     setInputMode(mode);
@@ -35,116 +148,20 @@ function App() {
     }
   };
 
-  const handlePhotoCapture = async (file: File) => {
+  const handlePhotoCapture = (file: File) => {
     setShowCapture(false);
-    setIsProcessing(true);
-    setError('');
-    setValidationError(null);
-    setNeedsPersonRemoval(false);
-
-    const validationResult = await validateImageForProfile(file);
-
-    if (!validationResult.isValid) {
-      setIsProcessing(false);
-      setValidationError({
-        message: validationResult.error || 'Photo validation failed. Please try another photo.',
-        file,
-      });
-      setInputMode(null);
-      return;
-    }
-
-    setNeedsPersonRemoval(validationResult.needsPersonRemoval || false);
-
-    const reader = new FileReader();
-    reader.onload = async (e) => {
-      setPhotoState({
-        original: e.target?.result as string,
-        enhanced: null,
-        file,
-        variations: { variant1: null, variant2: null, variant3: null, variant4: null },
-      });
-      await generateVariations(file);
-    };
-    reader.readAsDataURL(file);
+    processPhoto(file);
   };
 
-  const handlePhotoUpload = async (file: File) => {
-    setIsProcessing(true);
-    setError('');
-    setValidationError(null);
-    setNeedsPersonRemoval(false);
-
-    const validationResult = await validateImageForProfile(file);
-
-    if (!validationResult.isValid) {
-      setIsProcessing(false);
-      setValidationError({
-        message: validationResult.error || 'Photo validation failed. Please try another photo.',
-        file,
-      });
-      return;
-    }
-
-    setNeedsPersonRemoval(validationResult.needsPersonRemoval || false);
-
-    const reader = new FileReader();
-    reader.onload = async (e) => {
-      setPhotoState({
-        original: e.target?.result as string,
-        enhanced: null,
-        file,
-        variations: { variant1: null, variant2: null, variant3: null, variant4: null },
-      });
-      await generateVariations(file);
-    };
-    reader.readAsDataURL(file);
+  const handlePhotoUpload = (file: File) => {
+    processPhoto(file);
   };
 
-  const generateVariations = async (file: File) => {
-    setIsProcessing(true);
-    setError('');
-
-    try {
-      const resizedFile = await resizeImageIfNeeded(file);
-
-      const [result1, result2, result3, result4] = await Promise.all([
-        enhanceImage(resizedFile, AUTO_VARIATION_PROMPTS[0].prompt, undefined, needsPersonRemoval),
-        enhanceImage(resizedFile, AUTO_VARIATION_PROMPTS[1].prompt, undefined, needsPersonRemoval),
-        enhanceImage(resizedFile, AUTO_VARIATION_PROMPTS[2].prompt, undefined, needsPersonRemoval),
-        enhanceImage(resizedFile, AUTO_VARIATION_PROMPTS[3].prompt, undefined, needsPersonRemoval),
-      ]);
-
-      if (
-        result1.success && result1.enhancedImageUrl &&
-        result2.success && result2.enhancedImageUrl &&
-        result3.success && result3.enhancedImageUrl &&
-        result4.success && result4.enhancedImageUrl
-      ) {
-        setPhotoState(prev => ({
-          ...prev,
-          variations: {
-            variant1: result1.enhancedImageUrl!,
-            variant2: result2.enhancedImageUrl!,
-            variant3: result3.enhancedImageUrl!,
-            variant4: result4.enhancedImageUrl!,
-          },
-        }));
-        setStep('variations');
-      } else {
-        const errorMsg = result1.error || result2.error || result3.error || result4.error || 'Failed to generate variations. Please try again.';
-        if (errorMsg.includes('429') || errorMsg.includes('quota') || errorMsg.includes('busy')) {
-          setError('The enhancement service is momentarily busy. Please wait a moment and try again.');
-        } else {
-          setError(errorMsg);
-        }
-      }
-    } catch (err) {
-      console.error('Variation generation error:', err);
-      setError('An unexpected error occurred. Please try again.');
-    } finally {
-      setIsProcessing(false);
-    }
+  const handleOverrideValidation = () => {
+    if (!validationError?.file) return;
+    const file = validationError.file;
+    setValidationError(null);
+    processPhoto(file, { skipValidation: true });
   };
 
   const handleSelectVariation = (variationUrl: string) => {
@@ -158,19 +175,14 @@ function App() {
     setError('');
 
     try {
-      const resizedFile = await resizeImageIfNeeded(photoState.file);
-      const result = await enhanceImage(resizedFile, prompt, undefined, needsPersonRemoval);
+      const resizedFile = resizedFileRef.current ?? (await resizeImageIfNeeded(photoState.file));
+      const result = await enhanceImage(resizedFile, prompt, undefined, personRemovalRef.current);
 
       if (result.success && result.enhancedImageUrl) {
         setPhotoState(prev => ({ ...prev, enhanced: result.enhancedImageUrl! }));
         setStep('results');
       } else {
-        const errorMsg = result.error || 'Failed to enhance image. Please try again.';
-        if (errorMsg.includes('429') || errorMsg.includes('quota') || errorMsg.includes('busy')) {
-          setError('The enhancement service is momentarily busy. Please wait a moment and try again.');
-        } else {
-          setError(errorMsg);
-        }
+        setError(result.error || 'Failed to enhance image. Please try again.');
       }
     } catch (err) {
       console.error('Enhancement error:', err);
@@ -187,9 +199,12 @@ function App() {
 
   const handleUseOriginal = () => {
     if (photoState.original) {
+      const ext = photoState.file?.type === 'image/png' ? 'png'
+        : photoState.file?.type === 'image/heic' ? 'heic'
+        : 'jpg';
       const link = document.createElement('a');
       link.href = photoState.original;
-      link.download = `original-photo-${Date.now()}.jpg`;
+      link.download = `lumiere-portrait-original.${ext}`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -198,9 +213,12 @@ function App() {
 
   const handleBack = () => {
     if (step === 'input' || step === 'variations') {
+      releaseOriginalUrl();
+      resizedFileRef.current = null;
       setStep('welcome');
       setInputMode(null);
       setPhotoState({ original: null, enhanced: null, file: null });
+      setVariationStatus(Array(VARIATION_COUNT).fill('pending'));
     } else if (step === 'results') {
       setStep('variations');
     }
@@ -211,29 +229,8 @@ function App() {
     setInputMode(null);
   };
 
-  const handleOverrideValidation = async () => {
-    if (!validationError?.file) return;
-    const file = validationError.file;
-    setValidationError(null);
-    setNeedsPersonRemoval(false);
-    setIsProcessing(true);
-
-    const reader = new FileReader();
-    reader.onload = async (e) => {
-      setPhotoState({
-        original: e.target?.result as string,
-        enhanced: null,
-        file,
-        variations: { variant1: null, variant2: null, variant3: null, variant4: null },
-      });
-      await generateVariations(file);
-    };
-    reader.readAsDataURL(file);
-  };
-
   const handleDismissValidationError = () => {
     setValidationError(null);
-    setNeedsPersonRemoval(false);
     setInputMode(null);
   };
 
@@ -257,8 +254,8 @@ function App() {
           <div className="bg-[#111111] border border-white/20 px-6 py-5">
             <div className="flex items-start justify-between gap-4">
               <div className="flex-1">
-                <p className="text-xs tracking-widest uppercase text-white leading-relaxed mb-3">
-                  Subject unidentifiable. Please provide a clear, forward-facing portrait.
+                <p className="text-xs tracking-wide text-white leading-relaxed mb-3">
+                  {validationError.message}
                 </p>
                 <div className="flex gap-6">
                   <button
@@ -301,9 +298,10 @@ function App() {
         )}
 
         {error && (
-          <div className="max-w-2xl mx-auto mb-10 animate-toast-drop">
+          <div className="max-w-2xl mx-auto mb-10 animate-toast-drop" role="alert">
             <div className="bg-[#111111] border border-white/20 px-6 py-4">
-              <p className="text-xs tracking-widest uppercase text-white text-center">{error}</p>
+              <p className="font-serif italic text-sm text-white text-center mb-1">A moment, please</p>
+              <p className="text-xs tracking-wide text-white/80 text-center">{error}</p>
             </div>
           </div>
         )}
@@ -316,12 +314,11 @@ function App() {
 
         {step === 'variations' && photoState.original && photoState.variations && (
           <VariationSelection
-            variant1={photoState.variations.variant1 || photoState.original}
-            variant2={photoState.variations.variant2 || photoState.original}
-            variant3={photoState.variations.variant3 || photoState.original}
-            variant4={photoState.variations.variant4 || photoState.original}
+            variations={photoState.variations}
+            statuses={variationStatus}
             onSelectVariation={handleSelectVariation}
             onCustomEnhancement={handleCustomEnhancement}
+            onRetryVariation={handleRetryVariation}
             isProcessing={isProcessing}
           />
         )}
@@ -349,11 +346,11 @@ function Footer() {
       <div className="container mx-auto px-6 sm:px-12 lg:px-24 py-6 sm:py-8">
         <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
           <p className="text-xs tracking-widest uppercase text-luxury-gray-light">
-            Lumière Collective &mdash; AI-Powered Professional Photo Enhancement
+            Lumière Collective &mdash; Portrait Atelier
           </p>
           <button
             onClick={() => setOpen(o => !o)}
-            className="text-xs tracking-widest uppercase text-luxury-gray-light hover:text-luxury-navy transition-colors duration-300 flex items-center gap-2 cursor-pointer"
+            className="text-xs tracking-widest uppercase text-luxury-gray-light hover:text-luxury-navy transition-colors duration-300 flex items-center gap-2 cursor-pointer min-h-[44px]"
             aria-expanded={open}
           >
             {open ? 'Hide' : 'Privacy & Details'}
@@ -369,11 +366,11 @@ function Footer() {
         <div className={`lc-accordion-body ${open ? 'is-open' : ''}`}>
           <div>
             <div className="pt-6 pb-2 grid grid-cols-1 sm:grid-cols-2 gap-6 border-t border-[#111111]/10 mt-4">
-              <p className="text-xs tracking-widest uppercase text-luxury-gray-light leading-relaxed">
+              <p className="text-xs text-luxury-gray-light leading-relaxed">
                 <span className="text-luxury-gray-medium">Privacy.</span>{' '}
-                All photos are processed securely and are never stored on our servers. Each session is ephemeral and fully encrypted in transit.
+                All photos are processed in memory and never stored on our servers. Each session is ephemeral and encrypted in transit.
               </p>
-              <p className="text-xs tracking-widest uppercase text-luxury-gray-light leading-relaxed">
+              <p className="text-xs text-luxury-gray-light leading-relaxed">
                 <span className="text-luxury-gray-medium">Enhancement.</span>{' '}
                 AI enhancements are applied to background, lighting, and attire only. Facial features are preserved exactly as photographed.
               </p>

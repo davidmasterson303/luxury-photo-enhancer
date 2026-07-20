@@ -26,7 +26,7 @@ export default function ResultsDisplay({
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `enhanced-profile-${Date.now()}.jpg`;
+      link.download = `lumiere-portrait-${Date.now()}.jpg`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);

@@ -1,16 +1,16 @@
 import { useState } from 'react';
-import { Check, Sparkles, Eye, AlertCircle, Info } from 'lucide-react';
+import { Check, Sparkles, Eye, AlertCircle, Info, RotateCcw } from 'lucide-react';
 import { MAX_CUSTOM_PROMPT_LENGTH, AUTO_VARIATION_PROMPTS } from '../constants';
 import { validateCustomPrompt } from '../services/imageValidation';
+import { VariationStatus } from '../types';
 import PreviewModal from './PreviewModal';
 
 interface VariationSelectionProps {
-  variant1: string;
-  variant2: string;
-  variant3: string;
-  variant4: string;
+  variations: (string | null)[];
+  statuses: VariationStatus[];
   onSelectVariation: (variationUrl: string) => void;
   onCustomEnhancement: (prompt: string) => void;
+  onRetryVariation: (index: number) => void;
   isProcessing: boolean;
 }
 
@@ -21,12 +21,11 @@ const EXAMPLE_PROMPTS = [
 ];
 
 export default function VariationSelection({
-  variant1,
-  variant2,
-  variant3,
-  variant4,
+  variations,
+  statuses,
   onSelectVariation,
   onCustomEnhancement,
+  onRetryVariation,
   isProcessing,
 }: VariationSelectionProps) {
   const [selectedVariant, setSelectedVariant] = useState<string | null>(null);
@@ -35,6 +34,8 @@ export default function VariationSelection({
   const [previewImage, setPreviewImage] = useState<{ url: string; label: string } | null>(null);
   const [promptError, setPromptError] = useState<string>('');
   const [revealedCards, setRevealedCards] = useState<Set<number>>(new Set());
+
+  const stillDeveloping = statuses.some(s => s === 'pending');
 
   const handleSelectVariant = (variantUrl: string) => {
     setSelectedVariant(variantUrl);
@@ -61,30 +62,26 @@ export default function VariationSelection({
     setRevealedCards(prev => new Set(prev).add(index));
   };
 
-  const variants = [
-    { url: variant1, index: 0 },
-    { url: variant2, index: 1 },
-    { url: variant3, index: 2 },
-    { url: variant4, index: 3 },
-  ];
-
   return (
     <div className="w-full max-w-6xl mx-auto">
 
       {/* Header */}
       <div className="text-center mb-16 md:mb-20 px-4 animate-fade-up">
         <h2 className="font-serif italic text-4xl sm:text-5xl md:text-6xl font-light text-[#111111] mb-5 tracking-tight">
-          Select Your Directory Profile Aesthetic
+          Select Your Portrait
         </h2>
-        <p className="text-xs tracking-widest uppercase text-luxury-gray-medium font-light max-w-xl mx-auto">
-          Four expertly calibrated presentation styles tailored for your club profile.
+        <p className="text-xs tracking-widest uppercase text-luxury-gray-medium font-light max-w-xl mx-auto" aria-live="polite">
+          {stillDeveloping
+            ? 'Four styles, developing now — each appears as it finishes.'
+            : 'Four styles for your member profile. Choose one, or request something custom.'}
         </p>
       </div>
 
-      {/* Editorial grid — staggered vertical alignment */}
+      {/* Editorial grid — slots fill progressively as each generation lands */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8 sm:gap-10 lg:gap-12 mb-16 md:mb-20">
-        {variants.map(({ url, index }) => {
-          const isSelected = selectedVariant === url;
+        {variations.map((url, index) => {
+          const status = statuses[index];
+          const isSelected = url !== null && selectedVariant === url;
           const isRevealed = revealedCards.has(index);
           return (
             <div
@@ -115,15 +112,34 @@ export default function VariationSelection({
                   </div>
                 </div>
 
-                {/* Image — reserved aspect box prevents layout shift */}
-                <div className="lc-kb-wrap aspect-[4/5] w-full overflow-hidden">
-                  <img
-                    src={url}
-                    alt={AUTO_VARIATION_PROMPTS[index].label}
-                    className={`lc-kb-img w-full h-full object-cover ${isRevealed ? 'darkroom-reveal' : 'darkroom-pending'}`}
-                    loading="eager"
-                    onLoad={() => handleImageLoad(index)}
-                  />
+                {/* Image slot — reserved aspect box prevents layout shift */}
+                <div className="lc-kb-wrap aspect-[4/5] w-full overflow-hidden relative">
+                  {status === 'done' && url && (
+                    <img
+                      src={url}
+                      alt={AUTO_VARIATION_PROMPTS[index].label}
+                      className={`lc-kb-img w-full h-full object-cover ${isRevealed ? 'darkroom-reveal' : 'darkroom-pending'}`}
+                      loading="eager"
+                      onLoad={() => handleImageLoad(index)}
+                    />
+                  )}
+                  {status === 'pending' && (
+                    <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-[#111111]/[0.03] animate-pulse">
+                      <span className="font-serif italic text-sm text-[#111111]/50">Developing&hellip;</span>
+                    </div>
+                  )}
+                  {status === 'failed' && (
+                    <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-[#111111]/[0.03] px-4 text-center">
+                      <span className="font-serif italic text-sm text-[#111111]/60">This one didn&rsquo;t develop</span>
+                      <button
+                        onClick={() => onRetryVariation(index)}
+                        className="inline-flex items-center gap-2 px-4 py-2.5 border border-[#111111]/25 text-[#111111] text-xs tracking-widest uppercase font-medium hover:border-[#111111] transition-all duration-500 min-h-[44px] cursor-pointer"
+                      >
+                        <RotateCcw className="w-3.5 h-3.5" />
+                        Redo
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 {/* Selected indicator */}
@@ -137,18 +153,18 @@ export default function VariationSelection({
               {/* Buttons */}
               <div className="flex gap-2 mt-3">
                 <button
-                  onClick={() => setPreviewImage({ url, label: AUTO_VARIATION_PROMPTS[index].label })}
-                  disabled={isProcessing}
-                  className="flex-1 px-3 py-3 bg-transparent text-[#111111] border border-[#111111]/20 hover:border-[#111111] transition-all duration-500 flex items-center justify-center gap-2 text-xs tracking-widest uppercase font-medium min-h-[44px] cursor-pointer"
+                  onClick={() => url && setPreviewImage({ url, label: AUTO_VARIATION_PROMPTS[index].label })}
+                  disabled={isProcessing || status !== 'done'}
+                  className="flex-1 px-3 py-3 bg-transparent text-[#111111] border border-[#111111]/20 hover:border-[#111111] transition-all duration-500 flex items-center justify-center gap-2 text-xs tracking-widest uppercase font-medium min-h-[44px] cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                   aria-label={`Preview ${AUTO_VARIATION_PROMPTS[index].label}`}
                 >
                   <Eye className="w-3.5 h-3.5 flex-shrink-0" />
                   <span>Preview</span>
                 </button>
                 <button
-                  onClick={() => handleSelectVariant(url)}
-                  disabled={isProcessing}
-                  className="flex-1 px-3 py-3 bg-[#111111] text-white border border-[#111111] hover:bg-[#111111]/80 flex items-center justify-center gap-2 text-xs tracking-widest uppercase font-medium min-h-[44px] transition-colors duration-500 cursor-pointer"
+                  onClick={() => url && handleSelectVariant(url)}
+                  disabled={isProcessing || status !== 'done'}
+                  className="flex-1 px-3 py-3 bg-[#111111] text-white border border-[#111111] hover:bg-[#111111]/80 flex items-center justify-center gap-2 text-xs tracking-widest uppercase font-medium min-h-[44px] transition-colors duration-500 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                   aria-label={`Select ${AUTO_VARIATION_PROMPTS[index].label}`}
                 >
                   <Check className="w-3.5 h-3.5 flex-shrink-0" />

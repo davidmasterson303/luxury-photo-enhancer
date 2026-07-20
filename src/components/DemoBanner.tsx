@@ -14,7 +14,7 @@ export default function DemoBanner() {
         </span>
         <span className="w-px h-3 bg-[#EDE8DF]/15" />
         <span
-          className="font-sans text-[#EDE8DF] text-[0.68rem] tracking-[0.2em] uppercase font-medium group-hover:text-[#EDE8DF]/80 transition-colors duration-300"
+          className="font-sans text-[#CBAE79] text-[0.68rem] tracking-[0.2em] uppercase font-medium group-hover:text-[#CBAE79]/80 transition-colors duration-300"
         >
           David Masterson.
         </span>

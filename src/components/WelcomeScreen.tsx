@@ -38,12 +38,12 @@ export default function WelcomeScreen({ onSelectMode }: WelcomeScreenProps) {
 
         {/* Subtitle */}
         <p className="animate-fade-up animate-fade-up-d2 text-xs sm:text-sm tracking-widest uppercase text-luxury-gray-medium font-light px-4 mb-4">
-          Curating an elegant, polished digital presence for our global travel community.
+          An elegant portrait for our global travel community.
         </p>
 
         {/* Supporting text */}
         <p className="animate-fade-up animate-fade-up-d3 text-sm text-luxury-gray-medium leading-relaxed max-w-xl mx-auto font-light px-4">
-          Refine your likeness for the club registry. Upload or capture an instant portrait to be meticulously calibrated for your official member profile, ensuring a refined presentation across our private network.
+          A polished portrait for your member profile, in under a minute. Upload a photo or capture one now — we refine the lighting, background, and framing. Your face stays exactly yours.
         </p>
       </div>
 
@@ -58,10 +58,10 @@ export default function WelcomeScreen({ onSelectMode }: WelcomeScreenProps) {
             <Camera className="w-5 h-5 text-[#111111]" />
           </div>
           <h2 className="text-xs tracking-widest uppercase text-[#111111] font-medium mb-3 text-center transition-all duration-700 group-hover:tracking-widest">
-            Capture Instant Portrait
+            Capture a Portrait
           </h2>
           <p className="text-xs text-luxury-gray-medium leading-relaxed font-light text-center transition-all duration-700 group-hover:tracking-wide">
-            Use your device camera for a live, in-session capture
+            Use your camera for a quick portrait
           </p>
         </button>
 
@@ -74,10 +74,10 @@ export default function WelcomeScreen({ onSelectMode }: WelcomeScreenProps) {
             <Upload className="w-5 h-5 text-[#111111]" />
           </div>
           <h2 className="text-xs tracking-widest uppercase text-[#111111] font-medium mb-3 text-center transition-all duration-700 group-hover:tracking-widest">
-            Upload Existing Portrait
+            Upload a Photo
           </h2>
           <p className="text-xs text-luxury-gray-medium leading-relaxed font-light text-center transition-all duration-700 group-hover:tracking-wide">
-            Submit a curated photograph for calibration and refinement
+            Upload a photo you already like
           </p>
         </button>
       </div>
@@ -104,17 +104,20 @@ export default function WelcomeScreen({ onSelectMode }: WelcomeScreenProps) {
 
           <div className={`lc-accordion-body ${tipsOpen ? 'is-open' : ''}`}>
             <div>
-              <div className="pb-8 grid grid-cols-1 sm:grid-cols-3 gap-8">
-                <p className="text-xs tracking-widest uppercase text-luxury-gray-light opacity-60 leading-relaxed">
-                  Single person portrait — optimized for private directory rendering
+              <div className="pb-4 grid grid-cols-1 sm:grid-cols-3 gap-8">
+                <p className="text-xs text-luxury-gray-medium leading-relaxed">
+                  One person per portrait, framed head and shoulders.
                 </p>
-                <p className="text-xs tracking-widest uppercase text-luxury-gray-light opacity-60 leading-relaxed">
-                  Natural, flattering illumination with clear facial features
+                <p className="text-xs text-luxury-gray-medium leading-relaxed">
+                  Clear, even lighting with your face fully visible.
                 </p>
-                <p className="text-xs tracking-widest uppercase text-luxury-gray-light opacity-60 leading-relaxed">
-                  Polished, membership-ready presentation with minimal background distractions
+                <p className="text-xs text-luxury-gray-medium leading-relaxed">
+                  A simple background helps &mdash; we&rsquo;ll refine the rest.
                 </p>
               </div>
+              <p className="pb-8 text-xs text-luxury-gray-medium leading-relaxed">
+                <span className="text-[#111111]">Privacy.</span> Photos are processed in memory and never stored &mdash; each session is ephemeral, encrypted in transit.
+              </p>
             </div>
           </div>
         </div>

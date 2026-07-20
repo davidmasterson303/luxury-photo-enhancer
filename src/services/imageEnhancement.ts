@@ -2,6 +2,7 @@ export interface EnhancementResult {
   success: boolean;
   enhancedImageUrl?: string;
   error?: string;
+  code?: string;
 }
 
 const NEGATIVE_PROMPT_INJECTION =
@@ -11,9 +12,24 @@ const POSITIVE_PROMPT_INJECTION =
   'Subtle hair styling, refined professional studio lighting, strict adherence to original physical proportions.';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 const ENHANCE_API_URL = `${SUPABASE_URL}/functions/v1/enhance-image`;
-const MAX_RETRIES = 3;
+
+// One retry (2 attempts total). The old 3-attempt loop, multiplied by four
+// parallel variations, could fire 12 Gemini calls off one click.
+const MAX_ATTEMPTS = 2;
 const RETRY_DELAY = 2000;
+
+// Codes that are pointless to retry (the request itself is rejected).
+const NON_RETRYABLE = new Set(['PROMPT_NOT_SUPPORTED', 'BAD_REQUEST', 'UNAUTHORIZED']);
+
+const FRIENDLY_MESSAGES: Record<string, string> = {
+  RATE_LIMITED: 'The atelier is momentarily busy. Please wait a moment and try again.',
+  UPSTREAM_ERROR: 'The enhancement service had a hiccup. Please try again.',
+  GENERATION_FAILED: 'That photo could not be enhanced. Try a different photo.',
+  NO_IMAGE: 'No image came back. Please try again.',
+  INTERNAL_ERROR: 'Something went wrong on our side. Please try again.',
+};
 
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -23,9 +39,9 @@ export async function enhanceImage(
   _apiKey?: string,
   needsPersonRemoval = false
 ): Promise<EnhancementResult> {
-  let lastError: Error | null = null;
+  let lastResult: EnhancementResult = { success: false, error: 'Failed to enhance image.' };
 
-  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     try {
       const composedPrompt = `${POSITIVE_PROMPT_INJECTION} ${prompt} ${NEGATIVE_PROMPT_INJECTION}`;
 
@@ -36,55 +52,46 @@ export async function enhanceImage(
 
       const response = await fetch(ENHANCE_API_URL, {
         method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+          'apikey': SUPABASE_ANON_KEY,
+        },
         body: formData,
       });
 
-      if (response.status === 429) {
-        if (attempt < MAX_RETRIES) {
-          await delay(RETRY_DELAY * attempt);
-          continue;
-        }
-        return {
-          success: false,
-          error: 'Service is currently busy. Please try again in a few moments.',
-        };
+      const result = await response.json().catch(() => ({} as Record<string, unknown>));
+      const code = (result.code as string) || (response.status === 429 ? 'RATE_LIMITED' : undefined);
+
+      if (response.ok && result.enhanced_image_url) {
+        return { success: true, enhancedImageUrl: result.enhanced_image_url as string };
       }
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        const errorMessage = errorData.error || errorData.message || `API request failed with status ${response.status}`;
-        const errorDetails = errorData.details ? `\n${errorData.details}` : '';
-        throw new Error(errorMessage + errorDetails);
-      }
+      lastResult = {
+        success: false,
+        code,
+        error:
+          (code && FRIENDLY_MESSAGES[code]) ||
+          (result.error as string) ||
+          `Enhancement failed (${response.status}).`,
+      };
 
-      const result = await response.json();
-
-      if (result.error) {
-        throw new Error(result.error);
-      }
-
-      if (result.enhanced_image_url) {
-        return {
-          success: true,
-          enhancedImageUrl: result.enhanced_image_url,
-        };
-      }
-
-      throw new Error('No enhanced image returned from API');
+      if (code && NON_RETRYABLE.has(code)) return lastResult;
     } catch (error) {
-      lastError = error as Error;
       console.error(`Enhancement attempt ${attempt} failed:`, error);
+      lastResult = {
+        success: false,
+        code: 'NETWORK',
+        error: 'Could not reach the enhancement service. Check your connection and try again.',
+      };
+    }
 
-      if (attempt < MAX_RETRIES) {
-        await delay(RETRY_DELAY * attempt);
-      }
+    if (attempt < MAX_ATTEMPTS) {
+      // Jittered backoff so four parallel variations don't retry in lockstep.
+      await delay(RETRY_DELAY * attempt + Math.random() * 1000);
     }
   }
 
-  return {
-    success: false,
-    error: lastError?.message || 'Failed to enhance image after multiple attempts. Please try again.',
-  };
+  return lastResult;
 }
 
 export async function resizeImageIfNeeded(file: File, maxWidth = 2000, maxHeight = 2000): Promise<File> {

@@ -1,10 +1,24 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
-};
+const ALLOWED_ORIGINS = new Set([
+  "https://luxuryphotoenhancer-demo.davidmasterson.co",
+  "http://localhost:5173",
+  "http://localhost:4173",
+]);
+
+// CORS locked to known origins (was `*`) — same policy as enhance-image.
+function corsHeadersFor(origin: string | null): Record<string, string> {
+  const allowed =
+    origin && ALLOWED_ORIGINS.has(origin)
+      ? origin
+      : "https://luxuryphotoenhancer-demo.davidmasterson.co";
+  return {
+    "Access-Control-Allow-Origin": allowed,
+    "Vary": "Origin",
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
+  };
+}
 
 const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY") ?? "";
 const GEMINI_VISION_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent";
@@ -25,6 +39,7 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
 
 
 Deno.serve(async (req: Request) => {
+  const corsHeaders = corsHeadersFor(req.headers.get("origin"));
   if (req.method === "OPTIONS") {
     return new Response(null, {
       status: 200,
