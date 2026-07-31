@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Download, ArrowLeft, CheckCircle, ZoomIn, Maximize2 } from 'lucide-react';
+import { extensionForMimeType } from '../utils';
 
 interface ResultsDisplayProps {
   originalImage: string;
@@ -26,7 +27,7 @@ export default function ResultsDisplay({
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `lumiere-portrait-${Date.now()}.jpg`;
+      link.download = `lumiere-portrait-${Date.now()}.${extensionForMimeType(blob.type, 'png')}`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);

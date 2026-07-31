@@ -14,7 +14,12 @@ export default function PhotoUpload({ onUpload }: PhotoUploadProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const validateFile = (file: File): string | null => {
-    if (!ACCEPTED_IMAGE_TYPES.includes(file.type)) {
+    // iOS frequently reports an empty type for HEIC, so the extension is
+    // the only signal we get. Rejecting on type alone turned away the
+    // format this app is most likely to be handed.
+    const acceptedByType = ACCEPTED_IMAGE_TYPES.includes(file.type);
+    const acceptedByExtension = file.type === '' && /\.hei[cf]$/i.test(file.name);
+    if (!acceptedByType && !acceptedByExtension) {
       return 'Please upload a JPG, PNG, or HEIC image file.';
     }
     if (file.size > MAX_FILE_SIZE) {
@@ -107,7 +112,7 @@ export default function PhotoUpload({ onUpload }: PhotoUploadProps) {
           ref={fileInputRef}
           type="file"
           className="hidden"
-          accept="image/jpeg,image/png,image/heic"
+          accept="image/jpeg,image/png,image/heic,image/heif,.heic,.heif"
           onChange={handleChange}
           disabled={submitted}
         />

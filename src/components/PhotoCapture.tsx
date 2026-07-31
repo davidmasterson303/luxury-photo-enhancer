@@ -7,7 +7,6 @@ interface PhotoCaptureProps {
 }
 
 export default function PhotoCapture({ onCapture, onCancel }: PhotoCaptureProps) {
-  const [stream, setStream] = useState<MediaStream | null>(null);
   const [facingMode, setFacingMode] = useState<'user' | 'environment'>('user');
   const [error, setError] = useState<string>('');
   const [visible, setVisible] = useState(false);
@@ -15,41 +14,70 @@ export default function PhotoCapture({ onCapture, onCancel }: PhotoCaptureProps)
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
+  /* A ref, not state: effect cleanup closes over the render it ran in,
+   * so a `stream` state variable is still null there and the tracks
+   * were never stopped — cancelling the camera left the capture
+   * indicator lit until the tab closed. Nothing renders off the
+   * stream (the <video> gets srcObject imperatively), so state buys
+   * nothing here. */
+  const streamRef = useRef<MediaStream | null>(null);
+
+  const stopStream = () => {
+    streamRef.current?.getTracks().forEach(t => t.stop());
+    streamRef.current = null;
+  };
+
   useEffect(() => {
+    // `cancelled` covers the other half of the leak: getUserMedia can
+    // resolve after the user has already backed out of the permission
+    // prompt, which would hand us a live stream nobody will ever stop.
+    let cancelled = false;
+
     requestAnimationFrame(() => setVisible(true));
-    startCamera();
+
+    (async () => {
+      try {
+        setError('');
+        const mediaStream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode, width: { ideal: 1920 }, height: { ideal: 1080 } },
+          audio: false,
+        });
+
+        if (cancelled) {
+          mediaStream.getTracks().forEach(t => t.stop());
+          return;
+        }
+
+        streamRef.current = mediaStream;
+        if (videoRef.current) videoRef.current.srcObject = mediaStream;
+      } catch {
+        if (!cancelled) {
+          setError('Unable to access camera. Please ensure camera permissions are granted.');
+        }
+      }
+    })();
+
     return () => {
-      if (stream) stream.getTracks().forEach(t => t.stop());
+      cancelled = true;
+      stopStream();
     };
   }, [facingMode]);
 
-  const startCamera = async () => {
-    try {
-      setError('');
-      if (stream) stream.getTracks().forEach(t => t.stop());
-
-      const mediaStream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode, width: { ideal: 1920 }, height: { ideal: 1080 } },
-        audio: false,
-      });
-
-      setStream(mediaStream);
-      if (videoRef.current) videoRef.current.srcObject = mediaStream;
-    } catch {
-      setError('Unable to access camera. Please ensure camera permissions are granted.');
-    }
-  };
-
   const capturePhoto = () => {
     if (capturing || !videoRef.current || !canvasRef.current) return;
-    setCapturing(true);
 
     const video = videoRef.current;
     const canvas = canvasRef.current;
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
+
+    // Guards run before the flag is set — an early return past
+    // setCapturing(true) disables the shutter for good.
+    if (!video.videoWidth || !video.videoHeight) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
+
+    setCapturing(true);
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
 
     if (facingMode === 'user') {
       ctx.translate(canvas.width, 0);
@@ -58,11 +86,13 @@ export default function PhotoCapture({ onCapture, onCancel }: PhotoCaptureProps)
     ctx.drawImage(video, 0, 0);
 
     canvas.toBlob((blob) => {
-      if (blob) {
-        const file = new File([blob], 'captured-photo.jpg', { type: 'image/jpeg' });
-        onCapture(file);
-        if (stream) stream.getTracks().forEach(t => t.stop());
+      if (!blob) {
+        setCapturing(false);
+        return;
       }
+      const file = new File([blob], 'captured-photo.jpg', { type: 'image/jpeg' });
+      stopStream();
+      onCapture(file);
     }, 'image/jpeg', 0.95);
   };
 

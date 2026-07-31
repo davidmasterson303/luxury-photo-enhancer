@@ -21,3 +21,6 @@ dist-ssr
 *.sln
 *.sw?
 .env
+
+# Bolt.new scaffolding — the project has outgrown it
+.bolt

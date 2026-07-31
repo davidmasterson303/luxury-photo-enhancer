@@ -22,5 +22,8 @@ export const AUTO_VARIATION_PROMPTS = [
 ];
 
 export const MAX_FILE_SIZE = 10 * 1024 * 1024;
-export const ACCEPTED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/heic'];
+
+/* HEIC/HEIF are converted to JPEG in the browser before enhancement
+ * (see toDecodableFile in services/imageEnhancement). */
+export const ACCEPTED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/heic', 'image/heif'];
 export const MAX_CUSTOM_PROMPT_LENGTH = 200;

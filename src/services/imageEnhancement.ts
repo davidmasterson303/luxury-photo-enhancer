@@ -94,69 +94,101 @@ export async function enhanceImage(
   return lastResult;
 }
 
-export async function resizeImageIfNeeded(file: File, maxWidth = 2000, maxHeight = 2000): Promise<File> {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    const reader = new FileReader();
+/* Thrown when the browser cannot turn the chosen file into pixels.
+ * Distinguished from a generation failure so the UI can say what is
+ * actually wrong instead of "An unexpected error occurred". */
+export class ImageDecodeError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ImageDecodeError';
+  }
+}
 
-    reader.onload = (e) => {
-      img.src = e.target?.result as string;
-    };
+/* iOS hands over HEIC with an empty `type` often enough that sniffing
+ * the extension is not optional. */
+export function isHeicFile(file: File): boolean {
+  const type = file.type.toLowerCase();
+  if (type === 'image/heic' || type === 'image/heif') return true;
+  return type === '' && /\.hei[cf]$/i.test(file.name);
+}
 
-    reader.onerror = reject;
+/* HEIC is the default iPhone format and therefore the likeliest input
+ * this app gets, but no engine outside Safari will decode it — the old
+ * `new Image()` path just fired onerror and dead-ended the upload on a
+ * generic error screen. heic2any is ~500KB, so it is imported here and
+ * only when someone actually hands us a HEIC. */
+async function toDecodableFile(file: File): Promise<File> {
+  if (!isHeicFile(file)) return file;
 
-    img.onload = () => {
-      if (img.width <= maxWidth && img.height <= maxHeight) {
-        resolve(file);
-        return;
-      }
+  try {
+    const { default: heic2any } = await import('heic2any');
+    const converted = await heic2any({ blob: file, toType: 'image/jpeg', quality: 0.92 });
+    const blob = Array.isArray(converted) ? converted[0] : converted;
+    return new File([blob], file.name.replace(/\.hei[cf]$/i, '.jpg'), {
+      type: 'image/jpeg',
+      lastModified: Date.now(),
+    });
+  } catch (error) {
+    console.error('HEIC conversion failed:', error);
+    throw new ImageDecodeError(
+      'That HEIC photo could not be read. Please export it as JPEG and try again.'
+    );
+  }
+}
 
-      const canvas = document.createElement('canvas');
-      let width = img.width;
-      let height = img.height;
+export async function resizeImageIfNeeded(
+  file: File,
+  maxWidth = 2000,
+  maxHeight = 2000
+): Promise<File> {
+  const source = await toDecodableFile(file);
 
-      if (width > height) {
-        if (width > maxWidth) {
-          height = (height * maxWidth) / width;
-          width = maxWidth;
-        }
-      } else {
-        if (height > maxHeight) {
-          width = (width * maxHeight) / height;
-          height = maxHeight;
-        }
-      }
+  /* createImageBitmap decodes the File directly. The previous path read
+   * the whole thing into a base64 data URL first — a ~13MB string for a
+   * 10MB upload, held alongside the decoded bitmap, on a phone. */
+  let bitmap: ImageBitmap;
+  try {
+    bitmap = await createImageBitmap(source);
+  } catch (error) {
+    console.error('Image decode failed:', error);
+    throw new ImageDecodeError(
+      'That image could not be read. Please try a JPG or PNG.'
+    );
+  }
 
-      canvas.width = width;
-      canvas.height = height;
+  try {
+    if (bitmap.width <= maxWidth && bitmap.height <= maxHeight) {
+      return source;
+    }
 
-      const ctx = canvas.getContext('2d');
-      if (!ctx) {
-        reject(new Error('Failed to get canvas context'));
-        return;
-      }
+    /* One scale factor for both axes: the branch-per-orientation version
+     * this replaces could leave the long edge over the limit whenever
+     * maxWidth and maxHeight differed. Rounded because a fractional
+     * canvas dimension is silently truncated. */
+    const scale = Math.min(maxWidth / bitmap.width, maxHeight / bitmap.height);
+    const width = Math.round(bitmap.width * scale);
+    const height = Math.round(bitmap.height * scale);
 
-      ctx.drawImage(img, 0, 0, width, height);
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
 
-      canvas.toBlob(
-        (blob) => {
-          if (blob) {
-            const resizedFile = new File([blob], file.name, {
-              type: 'image/jpeg',
-              lastModified: Date.now(),
-            });
-            resolve(resizedFile);
-          } else {
-            reject(new Error('Failed to create blob from canvas'));
-          }
-        },
-        'image/jpeg',
-        0.92
-      );
-    };
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      throw new ImageDecodeError('This browser could not process the image. Please try another.');
+    }
 
-    img.onerror = reject;
+    ctx.drawImage(bitmap, 0, 0, width, height);
 
-    reader.readAsDataURL(file);
-  });
+    const blob = await new Promise<Blob | null>((resolve) =>
+      canvas.toBlob(resolve, 'image/jpeg', 0.92)
+    );
+    if (!blob) {
+      throw new ImageDecodeError('This browser could not process the image. Please try another.');
+    }
+
+    return new File([blob], source.name, { type: 'image/jpeg', lastModified: Date.now() });
+  } finally {
+    bitmap.close();
+  }
 }

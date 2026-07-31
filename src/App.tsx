@@ -7,10 +7,11 @@ import PhotoUpload from './components/PhotoUpload';
 import VariationSelection from './components/VariationSelection';
 import ResultsDisplay from './components/ResultsDisplay';
 import LoadingState from './components/LoadingState';
-import { enhanceImage, resizeImageIfNeeded } from './services/imageEnhancement';
+import { enhanceImage, resizeImageIfNeeded, ImageDecodeError } from './services/imageEnhancement';
 import { validateImageForProfile } from './services/imageValidation';
 import { AppStep, InputMode, PhotoState, VariationStatus } from './types';
 import { AUTO_VARIATION_PROMPTS } from './constants';
+import { extensionForMimeType } from './utils';
 
 const VARIATION_COUNT = AUTO_VARIATION_PROMPTS.length;
 
@@ -126,17 +127,31 @@ function App() {
       }
     } catch (err) {
       console.error('Variation generation error:', err);
-      setError('An unexpected error occurred. Please try again.');
+      // A file we could not decode is the single likeliest failure here
+      // (HEIC from an iPhone). Say so rather than "unexpected error".
+      setError(
+        err instanceof ImageDecodeError
+          ? err.message
+          : 'An unexpected error occurred. Please try again.'
+      );
       setStep('welcome');
+      setInputMode(null);
     }
   };
 
   /* Regenerate a single style without redoing all four. */
   const handleRetryVariation = async (index: number) => {
-    const resizedFile = resizedFileRef.current ?? (photoState.file ? await resizeImageIfNeeded(photoState.file) : null);
-    if (!resizedFile) return;
     setError('');
-    await runVariation(resizedFile, index, personRemovalRef.current);
+    try {
+      const resizedFile =
+        resizedFileRef.current ??
+        (photoState.file ? await resizeImageIfNeeded(photoState.file) : null);
+      if (!resizedFile) return;
+      await runVariation(resizedFile, index, personRemovalRef.current);
+    } catch (err) {
+      console.error('Retry error:', err);
+      setVariationStatus(prev => prev.map((s, i) => (i === index ? 'failed' : s)));
+    }
   };
 
   const handleSelectMode = (mode: InputMode) => {
@@ -186,7 +201,11 @@ function App() {
       }
     } catch (err) {
       console.error('Enhancement error:', err);
-      setError('An unexpected error occurred. Please try again.');
+      setError(
+        err instanceof ImageDecodeError
+          ? err.message
+          : 'An unexpected error occurred. Please try again.'
+      );
     } finally {
       setIsProcessing(false);
     }
@@ -199,9 +218,7 @@ function App() {
 
   const handleUseOriginal = () => {
     if (photoState.original) {
-      const ext = photoState.file?.type === 'image/png' ? 'png'
-        : photoState.file?.type === 'image/heic' ? 'heic'
-        : 'jpg';
+      const ext = extensionForMimeType(photoState.file?.type);
       const link = document.createElement('a');
       link.href = photoState.original;
       link.download = `lumiere-portrait-original.${ext}`;

@@ -1,74 +1,23 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-
-/* ── CORS — locked to known origins (was `*`) ─────────────────────
- * The function spends Gemini quota, so it only answers the demo
- * domain and local dev. Unknown origins get the demo domain back,
- * which makes the browser block the response. */
-const ALLOWED_ORIGINS = new Set([
-  "https://luxuryphotoenhancer-demo.davidmasterson.co",
-  "http://localhost:5173",
-  "http://localhost:4173",
-]);
-
-function corsHeadersFor(origin: string | null): Record<string, string> {
-  const allowed =
-    origin && ALLOWED_ORIGINS.has(origin)
-      ? origin
-      : "https://luxuryphotoenhancer-demo.davidmasterson.co";
-  return {
-    "Access-Control-Allow-Origin": allowed,
-    "Vary": "Origin",
-    "Access-Control-Allow-Methods": "POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
-  };
-}
+import { IMAGE_MODEL, generateContentUrl } from "./models.ts";
+import {
+  clientIp,
+  corsHeadersFor,
+  createRateLimiter,
+  hasValidAnonKey,
+  jsonResponse,
+} from "./guards.ts";
 
 const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY") ?? "";
-// Injected automatically into every Supabase Edge Function.
-const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
-const GEMINI_API_URL =
-  "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent";
+const GEMINI_API_URL = generateContentUrl(IMAGE_MODEL);
 
-/* ── Rate limiting — per-IP sliding window ────────────────────────
- * In-memory per isolate: not perfect across cold starts, but stops
- * the cheap abuse case (a loop hammering the endpoint). A normal
- * session uses 4 calls per upload + occasional retries/customs. */
-const RATE_LIMIT_MAX = 12;
-const RATE_LIMIT_WINDOW_MS = 60_000;
-const hits = new Map<string, number[]>();
+/* A normal session uses 4 calls per upload + occasional retries and
+ * customs, so 12/min is roughly two full sessions back to back. */
+const isRateLimited = createRateLimiter(12, 60_000);
 
-function isRateLimited(ip: string): boolean {
-  const now = Date.now();
-  const stamps = (hits.get(ip) ?? []).filter((t) => now - t < RATE_LIMIT_WINDOW_MS);
-  if (stamps.length >= RATE_LIMIT_MAX) {
-    hits.set(ip, stamps);
-    return true;
-  }
-  stamps.push(now);
-  hits.set(ip, stamps);
-  // Opportunistic cleanup so the map can't grow unbounded.
-  if (hits.size > 5000) {
-    for (const [k, v] of hits) {
-      if (v.every((t) => now - t >= RATE_LIMIT_WINDOW_MS)) hits.delete(k);
-    }
-  }
-  return false;
-}
-
-function jsonResponse(
-  body: Record<string, unknown>,
-  status: number,
-  cors: Record<string, string>,
-): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { ...cors, "Content-Type": "application/json" },
-  });
-}
-
-/* ── Prompt validation — word-boundary matching ───────────────────
- * Substring matching produced false positives ("fireplace" → 'fire',
- * "space between" → 'space'). Word boundaries fix those; the list is
+/* -- Prompt validation - word-boundary matching -------------------
+ * Substring matching produced false positives ("fireplace" -> 'fire',
+ * "space between" -> 'space'). Word boundaries fix those; the list is
  * trimmed to things that actually conflict with a professional
  * portrait. Error copy frames capability, not accusation. */
 const PROHIBITED_WORDS = [
@@ -94,7 +43,7 @@ const NEGATION_PHRASES = [
 ];
 
 const PROMPT_BLOCKED_MESSAGE =
-  "We can only adjust lighting, background, clothing, and color — try describing those instead.";
+  "We can only adjust lighting, background, clothing, and color - try describing those instead.";
 
 function hasWord(text: string, word: string): boolean {
   return new RegExp(`\\b${word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(text);
@@ -139,25 +88,11 @@ Deno.serve(async (req: Request) => {
     return new Response(null, { status: 200, headers: cors });
   }
 
-  /* ── Auth — require the project anon key ──────────────────────
-   * The anon key is public by design, but requiring it means random
-   * cross-origin POSTs (curl loops that never loaded our client)
-   * can't spend Gemini quota without at least presenting it, and it
-   * restores parity with validate-image, which already required it. */
-  if (SUPABASE_ANON_KEY) {
-    const authHeader = req.headers.get("authorization") ?? "";
-    const apiKeyHeader = req.headers.get("apikey") ?? "";
-    const bearer = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
-    if (bearer !== SUPABASE_ANON_KEY && apiKeyHeader !== SUPABASE_ANON_KEY) {
-      return jsonResponse({ error: "Unauthorized", code: "UNAUTHORIZED" }, 401, cors);
-    }
+  if (!hasValidAnonKey(req)) {
+    return jsonResponse({ error: "Unauthorized", code: "UNAUTHORIZED" }, 401, cors);
   }
 
-  const ip =
-    req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
-    req.headers.get("cf-connecting-ip") ??
-    "unknown";
-  if (isRateLimited(ip)) {
+  if (isRateLimited(clientIp(req))) {
     return jsonResponse(
       { error: "Too many requests. Please wait a moment and try again.", code: "RATE_LIMITED" },
       429,

@@ -3,6 +3,12 @@ export interface ValidationResult {
   error?: string;
   faceCount?: number;
   needsPersonRemoval?: boolean;
+  /* True when validation did not actually run and we let the upload
+   * through anyway. `isValid: true` alone cannot distinguish "checked
+   * and fine" from "never checked" — which is how a dead validator
+   * stayed invisible for months. Callers must not read faceCount or
+   * needsPersonRemoval when this is set. */
+  validationSkipped?: boolean;
 }
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
@@ -25,8 +31,8 @@ export async function validateImageForProfile(imageFile: File): Promise<Validati
 
     if (!response.ok) {
       // Service error (not a content issue) — pass through rather than blocking
-      console.warn('Validation service error, proceeding without validation');
-      return { isValid: true };
+      console.warn(`Validation service error (${response.status}), proceeding without validation`);
+      return { isValid: true, validationSkipped: true };
     }
 
     const result = await response.json();
@@ -39,7 +45,7 @@ export async function validateImageForProfile(imageFile: File): Promise<Validati
   } catch (error) {
     // Network/connection error — pass through rather than blocking
     console.warn('Validation unreachable, proceeding without validation:', error);
-    return { isValid: true };
+    return { isValid: true, validationSkipped: true };
   }
 }
 
