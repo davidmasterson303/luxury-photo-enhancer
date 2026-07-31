@@ -12,7 +12,12 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          # Must satisfy jsdom's engines (^22.22.2 || ^24.15.0 || >=26).
+          # Node 20 could not import jsdom at all — undici 8 calls
+          # webidl.util.markAsUncloneable, which does not exist there, so
+          # the smoke test died at collection while the rest went green.
+          # Keep this matching the development Node version.
+          node-version: 24
           cache: npm
       - run: npm ci
       - run: npm run typecheck
@@ -57,7 +62,12 @@ jobs:
           fi
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          # Must satisfy jsdom's engines (^22.22.2 || ^24.15.0 || >=26).
+          # Node 20 could not import jsdom at all — undici 8 calls
+          # webidl.util.markAsUncloneable, which does not exist there, so
+          # the smoke test died at collection while the rest went green.
+          # Keep this matching the development Node version.
+          node-version: 24
           cache: npm
       - run: npm ci
       - run: npm run build
