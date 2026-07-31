@@ -45,8 +45,10 @@ Everything that costs money runs server-side. Three consequences worth naming:
   stop someone using the app. Enhancement is four image-generation calls per
   click and fails *closed*, per slot.
 - **Both functions carry the same guards** — origin allow-list, anon-key check,
-  per-IP rate limit — because CORS only constrains browsers. It does nothing
-  about `curl`.
+  per-IP rate limit, and a shared daily call ceiling — because CORS only
+  constrains browsers. It does nothing about `curl`. When the day's budget is
+  spent the app shows a capacity notice rather than an error: for a demo on a
+  metered model, running out is a normal operating state, not a fault.
 
 ## Engineering notes
 
@@ -105,6 +107,25 @@ supabase secrets set GEMINI_API_KEY=...
 Other scripts: `npm test` (Vitest), `npm run typecheck`, `npm run lint`,
 `npm run build`.
 
+## Operating the demo
+
+Three Edge Function secrets control spend and are safe to change at any time
+without a deploy:
+
+| Secret | Effect |
+|---|---|
+| `DAILY_CALL_BUDGET` | Max Gemini calls per UTC day, shared by both functions. One sitting costs 5 (1 validation + 4 generations). Unset means no ceiling. |
+| `DEMO_ENABLED` | Set to `false` to close the demo immediately, independently of the counter. |
+| `VALIDATE_DEBUG` | Set to `true` to re-enable verbose validation logging. Off by default — those logs contained the model's analysis of a user's photo. |
+
+Once `DAILY_CALL_BUDGET` is set, a budget check that *errors* refuses the call
+rather than allowing it. Asking for spend protection and then silently getting
+none is the failure mode worth designing against; a demo being briefly down is
+recoverable, an unbounded bill is not.
+
+Today's usage lives in `demo_usage`. Row-level security is on with no policies,
+so only the service role — i.e. the Edge Functions — can read or write it.
+
 ## Stack
 
 - Vite, React 18, TypeScript
@@ -119,11 +140,12 @@ Other scripts: `npm test` (Vitest), `npm run typecheck`, `npm run lint`,
 
 This is a demo on a personal API key, and several things are sized for that:
 
-- **Rate limiting is in-memory, per isolate.** It stops a loop hammering one
-  endpoint and nothing else — it does not survive cold starts and does not
-  aggregate across IPs. Production needs a durable counter (Redis, or a
-  Postgres row) and a real daily spend ceiling that returns a capacity response
-  rather than an error.
+- **Rate limiting is two layers, and only one of them is durable.** The per-IP
+  sliding window is in-memory per isolate: it stops a loop hammering one
+  endpoint, but does not survive cold starts or aggregate across addresses.
+  Underneath it sits a real daily ceiling (`DAILY_CALL_BUDGET`) backed by a
+  Postgres row, which is what actually bounds the bill. Production would want
+  the burst layer durable too, and per-user quotas rather than one global pool.
 - **Images move as base64 data URLs.** Fine for one portrait at a time; wasteful
   at any volume. Object storage with signed URLs, passing references instead of
   bytes.

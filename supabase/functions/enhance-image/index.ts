@@ -7,6 +7,7 @@ import {
   hasValidAnonKey,
   jsonResponse,
 } from "./guards.ts";
+import { BUDGET_RESPONSE, reserveCall } from "./budget.ts";
 
 const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY") ?? "";
 const GEMINI_API_URL = generateContentUrl(IMAGE_MODEL);
@@ -98,6 +99,14 @@ Deno.serve(async (req: Request) => {
       429,
       cors,
     );
+  }
+
+  /* Reserved before the body is even read: the point is to spend nothing,
+   * and parsing a 10MB upload we are about to refuse is wasted work. 503
+   * rather than 429 — this is capacity, not the caller's rate. */
+  const budget = await reserveCall();
+  if (!budget.allowed) {
+    return jsonResponse(BUDGET_RESPONSE, 503, cors);
   }
 
   try {

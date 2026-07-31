@@ -7,7 +7,13 @@ import PhotoUpload from './components/PhotoUpload';
 import VariationSelection from './components/VariationSelection';
 import ResultsDisplay from './components/ResultsDisplay';
 import LoadingState from './components/LoadingState';
-import { enhanceImage, resizeImageIfNeeded, ImageDecodeError } from './services/imageEnhancement';
+import CapacityNotice from './components/CapacityNotice';
+import {
+  enhanceImage,
+  resizeImageIfNeeded,
+  ImageDecodeError,
+  BUDGET_EXHAUSTED,
+} from './services/imageEnhancement';
 import { validateImageForProfile } from './services/imageValidation';
 import { AppStep, InputMode, PhotoState, VariationStatus } from './types';
 import { AUTO_VARIATION_PROMPTS } from './constants';
@@ -30,6 +36,9 @@ function App() {
   const [error, setError] = useState<string>('');
   const [validationError, setValidationError] = useState<{ message: string; file: File } | null>(null);
   const [showCapture, setShowCapture] = useState(false);
+  // Distinct from `error`: capacity is a normal operating state for a
+  // metered demo, and gets its own screen rather than the error toast.
+  const [atCapacity, setAtCapacity] = useState(false);
 
   // Refs, not state: these are read inside async generation flows that start
   // in the same tick the value is decided — state would be a stale closure
@@ -51,6 +60,7 @@ function App() {
   const processPhoto = async (file: File, { skipValidation = false } = {}) => {
     setError('');
     setValidationError(null);
+    setAtCapacity(false);
     personRemovalRef.current = false;
 
     if (!skipValidation) {
@@ -118,10 +128,21 @@ function App() {
         AUTO_VARIATION_PROMPTS.map((_, i) => runVariation(resizedFile, i, personRemoval))
       );
 
-      const outcomes = results.map(r => (r.status === 'fulfilled' ? r.value : { success: false, error: 'Unexpected error' }));
+      const outcomes = results.map(r =>
+        r.status === 'fulfilled'
+          ? r.value
+          : { success: false, error: 'Unexpected error', code: undefined as string | undefined }
+      );
       if (outcomes.every(o => !o.success)) {
-        const firstError = outcomes.find(o => o.error)?.error;
-        setError(firstError || 'We couldn’t generate portraits from that photo. Please try another.');
+        // If the day's budget is gone, that is capacity rather than
+        // failure — show the notice instead of a red error toast. A
+        // partial success still renders the tiles that landed.
+        if (outcomes.some(o => o.code === BUDGET_EXHAUSTED)) {
+          setAtCapacity(true);
+        } else {
+          const firstError = outcomes.find(o => o.error)?.error;
+          setError(firstError || 'We couldn’t generate portraits from that photo. Please try another.');
+        }
         setStep('welcome');
         setInputMode(null);
       }
@@ -196,6 +217,10 @@ function App() {
       if (result.success && result.enhancedImageUrl) {
         setPhotoState(prev => ({ ...prev, enhanced: result.enhancedImageUrl! }));
         setStep('results');
+      } else if (result.code === BUDGET_EXHAUSTED) {
+        setAtCapacity(true);
+        setStep('welcome');
+        setInputMode(null);
       } else {
         setError(result.error || 'Failed to enhance image. Please try again.');
       }
@@ -314,7 +339,7 @@ function App() {
           </div>
         )}
 
-        {error && (
+        {error && !atCapacity && (
           <div className="max-w-2xl mx-auto mb-10 animate-toast-drop" role="alert">
             <div className="bg-[#111111] border border-white/20 px-6 py-4">
               <p className="font-serif italic text-sm text-white text-center mb-1">A moment, please</p>
@@ -323,7 +348,11 @@ function App() {
           </div>
         )}
 
-        {step === 'welcome' && <WelcomeScreen onSelectMode={handleSelectMode} />}
+        {step === 'welcome' && atCapacity && (
+          <CapacityNotice onDismiss={() => setAtCapacity(false)} />
+        )}
+
+        {step === 'welcome' && !atCapacity && <WelcomeScreen onSelectMode={handleSelectMode} />}
 
         {step === 'input' && inputMode === 'upload' && (
           <PhotoUpload onUpload={handlePhotoUpload} />

@@ -7,6 +7,7 @@ import {
   hasValidAnonKey,
   jsonResponse,
 } from "./guards.ts";
+import { BUDGET_RESPONSE, reserveCall } from "./budget.ts";
 
 const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY") ?? "";
 const GEMINI_VISION_URL = generateContentUrl(VISION_MODEL);
@@ -104,6 +105,15 @@ Deno.serve(async (req: Request) => {
       429,
       corsHeaders,
     );
+  }
+
+  /* Draws on the same daily counter as enhance-image. The client treats a
+   * non-OK validation as "skip and continue", so exhausting the budget
+   * here does not block the upload — the generation call that follows is
+   * what surfaces the capacity notice. */
+  const budget = await reserveCall();
+  if (!budget.allowed) {
+    return jsonResponse({ isValid: false, ...BUDGET_RESPONSE }, 503, corsHeaders);
   }
 
   try {

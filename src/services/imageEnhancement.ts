@@ -20,10 +20,23 @@ const ENHANCE_API_URL = `${SUPABASE_URL}/functions/v1/enhance-image`;
 const MAX_ATTEMPTS = 2;
 const RETRY_DELAY = 2000;
 
+/* The code the server returns once the day's Gemini budget is spent, or
+ * when the demo has been closed by hand. Exported because App renders a
+ * capacity screen for it rather than an error. */
+export const BUDGET_EXHAUSTED = 'BUDGET_EXHAUSTED';
+
 // Codes that are pointless to retry (the request itself is rejected).
-const NON_RETRYABLE = new Set(['PROMPT_NOT_SUPPORTED', 'BAD_REQUEST', 'UNAUTHORIZED']);
+// BUDGET_EXHAUSTED belongs here: retrying spends the retry to be told the
+// same thing, and the answer will not change until tomorrow.
+const NON_RETRYABLE = new Set([
+  'PROMPT_NOT_SUPPORTED',
+  'BAD_REQUEST',
+  'UNAUTHORIZED',
+  BUDGET_EXHAUSTED,
+]);
 
 const FRIENDLY_MESSAGES: Record<string, string> = {
+  [BUDGET_EXHAUSTED]: 'The atelier is fully booked today. Please return tomorrow.',
   RATE_LIMITED: 'The atelier is momentarily busy. Please wait a moment and try again.',
   UPSTREAM_ERROR: 'The enhancement service had a hiccup. Please try again.',
   GENERATION_FAILED: 'That photo could not be enhanced. Try a different photo.',
