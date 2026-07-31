@@ -99,7 +99,6 @@ function App() {
     const result = await enhanceImage(
       resizedFile,
       AUTO_VARIATION_PROMPTS[index].prompt,
-      undefined,
       personRemoval
     );
     if (result.success && result.enhancedImageUrl) {
@@ -212,7 +211,7 @@ function App() {
 
     try {
       const resizedFile = resizedFileRef.current ?? (await resizeImageIfNeeded(photoState.file));
-      const result = await enhanceImage(resizedFile, prompt, undefined, personRemovalRef.current);
+      const result = await enhanceImage(resizedFile, prompt, personRemovalRef.current);
 
       if (result.success && result.enhancedImageUrl) {
         setPhotoState(prev => ({ ...prev, enhanced: result.enhancedImageUrl! }));

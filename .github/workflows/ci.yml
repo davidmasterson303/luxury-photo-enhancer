@@ -9,8 +9,8 @@ jobs:
   build-and-test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           # Must satisfy jsdom's engines (^22.22.2 || ^24.15.0 || >=26).
           # Node 20 could not import jsdom at all — undici 8 calls
@@ -42,7 +42,7 @@ jobs:
       name: production
       url: https://luxuryphotoenhancer-demo.davidmasterson.co
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       # Fail here rather than three steps later with an opaque CLI error.
       # Deliberately does not skip silently: a deploy that quietly does
       # nothing is what let the live site drift in the first place.
@@ -60,7 +60,7 @@ jobs:
             echo "NETLIFY_SITE_ID:    Netlify > this site > Site configuration > Site ID"
             exit 1
           fi
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           # Must satisfy jsdom's engines (^22.22.2 || ^24.15.0 || >=26).
           # Node 20 could not import jsdom at all — undici 8 calls

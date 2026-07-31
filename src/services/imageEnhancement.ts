@@ -49,7 +49,6 @@ const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 export async function enhanceImage(
   imageFile: File,
   prompt: string,
-  _apiKey?: string,
   needsPersonRemoval = false
 ): Promise<EnhancementResult> {
   let lastResult: EnhancementResult = { success: false, error: 'Failed to enhance image.' };
