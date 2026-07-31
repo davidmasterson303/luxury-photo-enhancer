@@ -1,0 +1,27 @@
+# Supabase CLI configuration.
+#
+# The functions were previously deployed by hand through the dashboard
+# editor, which is why they drifted: nothing shipped them from the repo,
+# and a retired model ID sat in validate-image for months unnoticed.
+# CI deploys them now, and this file is what CI reads.
+#
+# project_id is the default target. CI passes --project-ref explicitly
+# (derived from the VITE_SUPABASE_URL secret) so that repointing the demo
+# at a different project is a one-secret change, and that flag wins over
+# this value.
+project_id = "yfstictbmgguktlxeasr"
+
+# verify_jwt is ON deliberately, and stating it here is the point of this
+# block. The CLI will happily deploy with it off, and the platform gate is
+# doing real work: without it, these endpoints are reachable by any POST
+# at all, rather than only by callers presenting the anon key.
+#
+# It is not authentication — the anon key ships in the client bundle by
+# design, so "has the key" means "read our JavaScript". The controls that
+# actually bound spend are the per-IP window in guards.ts and the daily
+# ceiling in budget.ts. This is the outer gate, not the lock.
+[functions.enhance-image]
+verify_jwt = true
+
+[functions.validate-image]
+verify_jwt = true

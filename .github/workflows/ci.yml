@@ -79,3 +79,58 @@ jobs:
         env:
           NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
           NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
+
+  deploy-functions:
+    # The edge functions had the drift problem worse than the front end: they
+    # were deployed by hand through the dashboard, so nothing shipped them from
+    # the repo at all. A retired model ID sat in validate-image for months and
+    # the only reason nobody noticed is that the backend was gone too.
+    #
+    # Independent of the Netlify job on purpose. A failure to ship functions
+    # should not hold back the front end, and neither should the reverse.
+    needs: build-and-test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Check function deploy secrets are configured
+        run: |
+          missing=""
+          [ -n "${{ secrets.SUPABASE_ACCESS_TOKEN }}" ] || missing="$missing SUPABASE_ACCESS_TOKEN"
+          [ -n "${{ secrets.VITE_SUPABASE_URL }}" ] || missing="$missing VITE_SUPABASE_URL"
+          if [ -n "$missing" ]; then
+            echo "::error::Missing repository secrets:$missing"
+            echo "SUPABASE_ACCESS_TOKEN: Supabase > Account > Access Tokens"
+            echo "VITE_SUPABASE_URL:     Supabase > project > Settings > API"
+            exit 1
+          fi
+
+      # Derived rather than stored separately, so pointing the demo at another
+      # project stays a one-secret change. The ref living in two places is how
+      # the front end ended up built against a deleted project.
+      - name: Derive project ref from the Supabase URL
+        env:
+          SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+        run: |
+          ref=$(printf '%s' "$SUPABASE_URL" | sed -nE 's#^https://([a-z0-9]+)\.supabase\.co/?$#\1#p')
+          if [ -z "$ref" ]; then
+            echo "::error::Could not parse a project ref from VITE_SUPABASE_URL."
+            echo "Expected the form https://<ref>.supabase.co"
+            exit 1
+          fi
+          echo "PROJECT_REF=$ref" >> "$GITHUB_ENV"
+          echo "Deploying functions to project $ref"
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      # Deployed separately so the log says which one failed. Function settings
+      # (notably verify_jwt) come from supabase/config.toml.
+      - name: Deploy edge functions
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          supabase functions deploy enhance-image --project-ref "$PROJECT_REF"
+          supabase functions deploy validate-image --project-ref "$PROJECT_REF"
