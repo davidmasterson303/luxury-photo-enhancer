@@ -37,6 +37,14 @@ export default function VariationSelection({
 
   const stillDeveloping = statuses.some(s => s === 'pending');
 
+  const doneCount = statuses.filter(s => s === 'done').length;
+  const failedCount = statuses.filter(s => s === 'failed').length;
+  const statusSummary = stillDeveloping
+    ? `${doneCount} of ${statuses.length} portraits ready.`
+    : failedCount > 0
+      ? `${doneCount} of ${statuses.length} portraits ready. ${failedCount} could not be developed.`
+      : `All ${statuses.length} portraits ready. Choose one, or request something custom.`;
+
   const handleSelectVariant = (variantUrl: string) => {
     setSelectedVariant(variantUrl);
     onSelectVariation(variantUrl);
@@ -70,12 +78,21 @@ export default function VariationSelection({
         <h2 className="font-serif italic text-4xl sm:text-5xl md:text-6xl font-light text-[#111111] mb-5 tracking-tight">
           Select Your Portrait
         </h2>
-        <p className="text-xs tracking-widest uppercase text-luxury-gray-medium font-light max-w-xl mx-auto" aria-live="polite">
+        <p className="text-xs tracking-widest uppercase text-luxury-gray-medium font-light max-w-xl mx-auto">
           {stillDeveloping
             ? 'Four styles, developing now — each appears as it finishes.'
             : 'Four styles for your member profile. Choose one, or request something custom.'}
         </p>
       </div>
+
+      {/* Portraits land one at a time over roughly half a minute. Sighted
+          users watch the grid fill in; without this, a screen-reader user
+          gets one message at the start and silence until they go hunting.
+          A running count rather than a per-card message: it changes once
+          per completion instead of re-reading the whole list each time. */}
+      <p className="sr-only" role="status" aria-live="polite">
+        {statusSummary}
+      </p>
 
       {/* Editorial grid — slots fill progressively as each generation lands */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8 sm:gap-10 lg:gap-12 mb-16 md:mb-20">
@@ -227,7 +244,7 @@ export default function VariationSelection({
             value={customPrompt}
             onChange={e => handlePromptChange(e.target.value)}
             placeholder="Describe your enhancement..."
-            className={`w-full p-4 text-sm border focus:outline-none resize-none font-light transition-all duration-300 bg-white text-[#111111] ${
+            className={`w-full p-4 text-sm border resize-none font-light transition-all duration-300 bg-white text-[#111111] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#111111] focus-visible:ring-offset-2 ${
               promptError
                 ? 'border-red-400'
                 : 'border-[#111111]/15 focus:border-[#111111]'

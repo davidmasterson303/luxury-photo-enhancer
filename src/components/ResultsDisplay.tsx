@@ -16,7 +16,7 @@ export default function ResultsDisplay({
   onUseOriginal,
 }: ResultsDisplayProps) {
   const [sliderPosition, setSliderPosition] = useState(50);
-  const [isDragging, setIsDragging] = useState(false);
+  const [sliderFocused, setSliderFocused] = useState(false);
   const [viewMode, setViewMode] = useState<'slider' | 'side-by-side' | 'enhanced-only'>('slider');
   const [isZoomed, setIsZoomed] = useState(false);
 
@@ -37,25 +37,8 @@ export default function ResultsDisplay({
     }
   };
 
-  const handleMouseDown = () => setIsDragging(true);
-  const handleMouseUp = () => setIsDragging(false);
-
-  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!isDragging) return;
-    const rect = e.currentTarget.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    setSliderPosition(Math.max(0, Math.min(100, (x / rect.width) * 100)));
-  };
-
-  const handleTouchMove = (e: React.TouchEvent<HTMLDivElement>) => {
-    if (!isDragging) return;
-    const rect = e.currentTarget.getBoundingClientRect();
-    const x = e.touches[0].clientX - rect.left;
-    setSliderPosition(Math.max(0, Math.min(100, (x / rect.width) * 100)));
-  };
-
   const viewBtnClass = (mode: typeof viewMode) =>
-    `px-5 sm:px-7 py-2.5 sm:py-3 text-xs tracking-widest uppercase font-medium transition-all duration-300 min-h-[44px] focus:outline-none ${
+    `px-5 sm:px-7 py-2.5 sm:py-3 text-xs tracking-widest uppercase font-medium transition-all duration-300 min-h-[44px] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#111111] focus-visible:ring-offset-2 ${
       viewMode === mode
         ? 'bg-[#111111] text-white'
         : 'bg-transparent border border-[#111111]/20 text-[#111111] hover:border-[#111111] cursor-pointer'
@@ -100,29 +83,24 @@ export default function ResultsDisplay({
 
         {viewMode === 'slider' && (
           <>
-            <div
-              className="relative w-full aspect-[4/5] max-w-2xl mx-auto overflow-hidden cursor-col-resize select-none touch-none border border-[#111111]/12"
-              onMouseMove={handleMouseMove}
-              onMouseUp={handleMouseUp}
-              onMouseLeave={handleMouseUp}
-              onTouchMove={handleTouchMove}
-              onTouchEnd={handleMouseUp}
-              onTouchStart={() => setIsDragging(true)}
-            >
+            <div className="relative w-full aspect-[4/5] max-w-2xl mx-auto overflow-hidden select-none touch-none border border-[#111111]/12">
               <img src={enhancedImage} alt="Enhanced" className="absolute inset-0 w-full h-full object-cover" draggable={false} />
 
               <div className="absolute inset-0 overflow-hidden" style={{ clipPath: `inset(0 ${100 - sliderPosition}% 0 0)` }}>
                 <img src={originalImage} alt="Original" className="absolute inset-0 w-full h-full object-cover" draggable={false} />
               </div>
 
-              {/* Slider line */}
+              {/* Slider line — presentation only. The control is the range
+                  input below; this just draws where its value sits. */}
               <div
-                className="absolute top-0 bottom-0 w-px bg-white/90"
+                className="absolute top-0 bottom-0 w-px bg-white/90 pointer-events-none"
                 style={{ left: `${sliderPosition}%` }}
-                onMouseDown={handleMouseDown}
-                onTouchStart={handleMouseDown}
               >
-                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-10 h-10 bg-white flex items-center justify-center cursor-grab active:cursor-grabbing">
+                <div
+                  className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-10 h-10 bg-white flex items-center justify-center transition-shadow duration-200 ${
+                    sliderFocused ? 'ring-2 ring-[#111111] ring-offset-2 ring-offset-white/60' : ''
+                  }`}
+                >
                   <div className="flex gap-1">
                     <div className="w-px h-4 bg-[#111111]/40" />
                     <div className="w-px h-4 bg-[#111111]/40" />
@@ -131,15 +109,35 @@ export default function ResultsDisplay({
               </div>
 
               {/* Labels */}
-              <div className="absolute top-4 left-4 bg-[#111111]/80 px-3 py-1.5">
+              <div className="absolute top-4 left-4 bg-[#111111]/80 px-3 py-1.5 pointer-events-none">
                 <p className="text-white text-xs tracking-widest uppercase">Original</p>
               </div>
-              <div className="absolute top-4 right-4 bg-white/90 px-3 py-1.5">
+              <div className="absolute top-4 right-4 bg-white/90 px-3 py-1.5 pointer-events-none">
                 <p className="text-[#111111] text-xs tracking-widest uppercase">Enhanced</p>
               </div>
+
+              {/* The actual control. A real range input rather than a div
+                  wearing role="slider": this gets keyboard, touch, pointer
+                  and assistive-technology support from the browser, and
+                  there is no hand-written ARIA to drift out of step with
+                  the visuals. Invisible because the handle above is the
+                  visual affordance. */}
+              <input
+                type="range"
+                min={0}
+                max={100}
+                step={1}
+                value={sliderPosition}
+                onChange={e => setSliderPosition(Number(e.target.value))}
+                onFocus={() => setSliderFocused(true)}
+                onBlur={() => setSliderFocused(false)}
+                className="absolute inset-0 z-10 w-full h-full opacity-0 cursor-col-resize"
+                aria-label="Compare original and enhanced portrait"
+                aria-valuetext={`${Math.round(sliderPosition)}% original, ${100 - Math.round(sliderPosition)}% enhanced`}
+              />
             </div>
             <p className="text-center text-xs tracking-widest uppercase text-luxury-gray-light mt-4 font-light px-4">
-              Drag the slider to compare
+              Drag to compare, or use the arrow keys
             </p>
           </>
         )}
@@ -197,7 +195,7 @@ export default function ResultsDisplay({
       <div className="flex flex-col md:flex-row gap-4 sm:gap-5 justify-center items-center px-4">
         <button
           onClick={handleDownload}
-          className="w-full md:w-auto px-10 sm:px-14 py-4 sm:py-5 bg-[#111111] text-white text-xs tracking-widest uppercase font-medium flex items-center justify-center gap-3 min-h-[52px] hover:bg-[#111111]/80 transition-colors duration-500 focus:outline-none focus:ring-1 focus:ring-[#111111] focus:ring-offset-2 cursor-pointer"
+          className="w-full md:w-auto px-10 sm:px-14 py-4 sm:py-5 bg-[#111111] text-white text-xs tracking-widest uppercase font-medium flex items-center justify-center gap-3 min-h-[52px] hover:bg-[#111111]/80 transition-colors duration-500 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#111111] focus-visible:ring-offset-2 cursor-pointer"
           aria-label="Download enhanced photo"
         >
           <Download className="w-4 h-4" />
@@ -206,7 +204,7 @@ export default function ResultsDisplay({
 
         <button
           onClick={onTryAgain}
-          className="w-full md:w-auto px-10 sm:px-14 py-4 sm:py-5 bg-transparent text-[#111111] text-xs tracking-widest uppercase font-medium border border-[#111111]/20 hover:border-[#111111] flex items-center justify-center gap-3 min-h-[52px] transition-all duration-500 focus:outline-none focus:ring-1 focus:ring-[#111111] focus:ring-offset-2 cursor-pointer"
+          className="w-full md:w-auto px-10 sm:px-14 py-4 sm:py-5 bg-transparent text-[#111111] text-xs tracking-widest uppercase font-medium border border-[#111111]/20 hover:border-[#111111] flex items-center justify-center gap-3 min-h-[52px] transition-all duration-500 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#111111] focus-visible:ring-offset-2 cursor-pointer"
           aria-label="Try different style variation"
         >
           <ArrowLeft className="w-4 h-4" />

@@ -17,8 +17,20 @@ export default function LoadingState() {
   }, []);
 
   return (
-    <div className="fixed inset-0 bg-[#F9F9F8] z-50 flex items-center justify-center p-8">
-      <div className="w-full max-w-xs mx-auto text-center">
+    <div
+      className="fixed inset-0 bg-[#F9F9F8] z-50 flex items-center justify-center p-8"
+      role="status"
+      aria-live="polite"
+    >
+      {/* One stable sentence for assistive technology. The rotating phase
+          text below is theatre — announcing it would interrupt every 2.4
+          seconds with no new information — so it is hidden from the
+          accessibility tree and this stands in for the whole overlay. */}
+      <span className="sr-only">
+        Enhancing your portrait. This usually takes about thirty seconds.
+      </span>
+
+      <div className="w-full max-w-xs mx-auto text-center" aria-hidden="true">
 
         {/* Cycling phase text */}
         <div className="relative h-5 mb-8 overflow-hidden">

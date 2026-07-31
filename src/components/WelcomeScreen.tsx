@@ -51,7 +51,7 @@ export default function WelcomeScreen({ onSelectMode }: WelcomeScreenProps) {
       <div className="animate-fade-up animate-fade-up-d4 grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-10 mb-16 md:mb-24">
         <button
           onClick={() => onSelectMode('camera')}
-          className="lc-card group p-10 sm:p-12 md:p-16 bg-white border border-[#111111]/12 hover:border-[#111111]/40 text-left focus:outline-none focus:ring-1 focus:ring-[#111111] focus:ring-offset-2 cursor-pointer"
+          className="lc-card group p-10 sm:p-12 md:p-16 bg-white border border-[#111111]/12 hover:border-[#111111]/40 text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#111111] focus-visible:ring-offset-2 cursor-pointer"
           aria-label="Capture new portrait with camera"
         >
           <div className="lc-card-icon w-12 h-12 border border-[#111111]/20 flex items-center justify-center mx-auto mb-8 group-hover:border-[#111111]/60 transition-colors duration-500">
@@ -67,7 +67,7 @@ export default function WelcomeScreen({ onSelectMode }: WelcomeScreenProps) {
 
         <button
           onClick={() => onSelectMode('upload')}
-          className="lc-card group p-10 sm:p-12 md:p-16 bg-white border border-[#111111]/12 hover:border-[#111111]/40 text-left focus:outline-none focus:ring-1 focus:ring-[#111111] focus:ring-offset-2 cursor-pointer"
+          className="lc-card group p-10 sm:p-12 md:p-16 bg-white border border-[#111111]/12 hover:border-[#111111]/40 text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#111111] focus-visible:ring-offset-2 cursor-pointer"
           aria-label="Upload existing portrait"
         >
           <div className="lc-card-icon w-12 h-12 border border-[#111111]/20 flex items-center justify-center mx-auto mb-8 group-hover:border-[#111111]/60 transition-colors duration-500">
@@ -87,7 +87,7 @@ export default function WelcomeScreen({ onSelectMode }: WelcomeScreenProps) {
         <div className="border-t border-[#111111]/10">
           <button
             onClick={() => setTipsOpen(o => !o)}
-            className="w-full flex items-center justify-between py-5 text-left focus:outline-none cursor-pointer group"
+            className="w-full flex items-center justify-between py-5 text-left cursor-pointer group focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#111111] focus-visible:ring-offset-2"
             aria-expanded={tipsOpen}
           >
             <span className="text-xs tracking-widest uppercase text-luxury-gray-light font-medium opacity-60 group-hover:opacity-100 transition-opacity duration-500">
