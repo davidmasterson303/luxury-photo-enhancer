@@ -12,11 +12,10 @@ import {
   enhanceImage,
   resizeImageIfNeeded,
   ImageDecodeError,
-  BUDGET_EXHAUSTED,
 } from './services/imageEnhancement';
 import { validateImageForProfile } from './services/imageValidation';
 import { AppStep, InputMode, PhotoState, VariationStatus } from './types';
-import { AUTO_VARIATION_PROMPTS } from './constants';
+import { AUTO_VARIATION_PROMPTS, BUDGET_EXHAUSTED } from './constants';
 import { extensionForMimeType } from './utils';
 
 const VARIATION_COUNT = AUTO_VARIATION_PROMPTS.length;
@@ -67,6 +66,16 @@ function App() {
       setIsProcessing(true);
       const validationResult = await validateImageForProfile(file);
       setIsProcessing(false);
+
+      /* Not a photo problem, so it must not reach the validation toast —
+       * its "Continue Anyway" would send them into a grid where all four
+       * generations refuse. */
+      if (validationResult.code === BUDGET_EXHAUSTED) {
+        setAtCapacity(true);
+        setStep('welcome');
+        setInputMode(null);
+        return;
+      }
 
       if (!validationResult.isValid) {
         setValidationError({

@@ -21,6 +21,11 @@ export const AUTO_VARIATION_PROMPTS = [
   },
 ];
 
+/* Returned by both edge functions once the day's Gemini budget is spent,
+ * or when the demo has been closed by hand. Lives here rather than in
+ * either service because both speak it. */
+export const BUDGET_EXHAUSTED = 'BUDGET_EXHAUSTED';
+
 export const MAX_FILE_SIZE = 10 * 1024 * 1024;
 
 /* HEIC/HEIF are converted to JPEG in the browser before enhancement

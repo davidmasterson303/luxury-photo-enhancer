@@ -1,8 +1,13 @@
+import { BUDGET_EXHAUSTED } from '../constants';
+
 export interface ValidationResult {
   isValid: boolean;
   error?: string;
   faceCount?: number;
   needsPersonRemoval?: boolean;
+  /* Set only for BUDGET_EXHAUSTED. Callers use it to show the capacity
+   * screen rather than the "try another photo" toast. */
+  code?: string;
   /* True when validation did not actually run and we let the upload
    * through anyway. `isValid: true` alone cannot distinguish "checked
    * and fine" from "never checked" — which is how a dead validator
@@ -30,7 +35,17 @@ export async function validateImageForProfile(imageFile: File): Promise<Validati
     });
 
     if (!response.ok) {
-      // Service error (not a content issue) — pass through rather than blocking
+      /* Budget exhaustion is a definite answer, not an outage. Failing
+       * open on it would send the visitor to the grid to upload the
+       * image four more times, only to be refused by every generation
+       * call — so surface it here, one round trip in, instead. */
+      const body = await response.json().catch(() => null);
+      if (body?.code === BUDGET_EXHAUSTED) {
+        return { isValid: false, error: body.error as string, code: BUDGET_EXHAUSTED };
+      }
+
+      // Anything else is a service problem, not a content problem. Fail
+      // open: a validator outage must not stop people using the app.
       console.warn(`Validation service error (${response.status}), proceeding without validation`);
       return { isValid: true, validationSkipped: true };
     }

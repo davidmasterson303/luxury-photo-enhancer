@@ -1,5 +1,6 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { enhanceImage, BUDGET_EXHAUSTED } from '../imageEnhancement';
+import { enhanceImage } from '../imageEnhancement';
+import { BUDGET_EXHAUSTED } from '../../constants';
 
 /* The retry loop is the part of this codebase that can cost money by
  * being wrong. A budget rejection that gets retried spends the retry to

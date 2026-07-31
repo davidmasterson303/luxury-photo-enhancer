@@ -1,3 +1,5 @@
+import { BUDGET_EXHAUSTED } from '../constants';
+
 export interface EnhancementResult {
   success: boolean;
   enhancedImageUrl?: string;
@@ -19,11 +21,6 @@ const ENHANCE_API_URL = `${SUPABASE_URL}/functions/v1/enhance-image`;
 // parallel variations, could fire 12 Gemini calls off one click.
 const MAX_ATTEMPTS = 2;
 const RETRY_DELAY = 2000;
-
-/* The code the server returns once the day's Gemini budget is spent, or
- * when the demo has been closed by hand. Exported because App renders a
- * capacity screen for it rather than an error. */
-export const BUDGET_EXHAUSTED = 'BUDGET_EXHAUSTED';
 
 // Codes that are pointless to retry (the request itself is rejected).
 // BUDGET_EXHAUSTED belongs here: retrying spends the retry to be told the
