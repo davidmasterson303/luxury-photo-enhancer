@@ -283,13 +283,35 @@ the app's own accounting is wrong.
 
 In the Google Cloud console for the project holding the Gemini key:
 
-- Set a **budget alert** on the billing account (Billing → Budgets & alerts)
-- Set a **quota limit** on the Generative Language API (APIs & Services →
-  the API → Quotas), capping requests per day
+- **Quota limit** on the Generative Language API (APIs & Services → the API →
+  Quotas). This is the one that actually stops anything.
+- **Budget alert** on the billing account (Billing → Budgets & alerts).
 
-The console's layout shifts; treat these as the destinations rather than exact
-click paths. The goal is a hard ceiling that does not depend on this repo's
-code being correct.
+**These are not two flavours of the same protection, and the difference is the
+whole point of this step.** A budget alert *notifies*; it does not cap, throttle,
+or halt anything. Spend continues past it. Only the quota limit enforces. Setting
+only the alert and considering the demo protected is the exact false-security
+this step exists to avoid — worse than no cap, because it feels handled.
+
+**Size it against the app's burst, not just its daily total.** One click is 1
+validation call plus 4 generation calls fired *in parallel* via
+`Promise.allSettled`, and each generation retries once on a transient failure —
+so a single sitting can put 4 concurrent and up to 9 total calls through in a few
+seconds. Per-minute quotas are where this bites: a limit sized for "a few uploads
+a day" can throttle one legitimate sitting mid-grid.
+
+The two models also draw on separate buckets — `gemini-3.1-flash-lite` for
+validation, `gemini-3.1-flash-image` for generation (see
+`supabase/functions/*/models.ts`) — so a per-model quota needs setting on both,
+and the generation one carries 4× the traffic.
+
+If step 5 starts failing with upstream errors after this step, suspect the quota
+before suspecting the code. A throttle and a genuine backend fault look identical
+from the front end.
+
+The console's layout shifts; treat these as destinations rather than exact click
+paths. The goal is a hard ceiling that does not depend on this repo's code being
+correct.
 
 ---
 
