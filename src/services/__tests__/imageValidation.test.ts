@@ -53,14 +53,25 @@ describe('validateCustomPrompt — negation handling', () => {
 
 describe('validateCustomPrompt — word boundaries', () => {
   it('does not trip on prohibited words embedded in innocent ones', () => {
-    // Plain substring matching rejected these. 'dead' inside "deadline",
-    // 'joint' inside "jointly".
-    expect(validateCustomPrompt('meet the deadline look, crisp lighting').isValid).toBe(true);
-    expect(validateCustomPrompt('jointly lit from both sides, soft shadows').isValid).toBe(true);
+    // Substring matching caught 'gun' inside "begun" and 'teen' inside
+    // "canteen". Word boundaries are what make a blocklist usable.
+    expect(validateCustomPrompt('lighting that has begun to soften nicely').isValid).toBe(true);
+    expect(validateCustomPrompt('a canteen backdrop with warm lighting').isValid).toBe(true);
+    expect(validateCustomPrompt('a sharpened, polished look for my profile').isValid).toBe(true);
   });
 
   it('still blocks the same words standing alone', () => {
-    expect(validateCustomPrompt('dead eyes stare, moody lighting').isValid).toBe(false);
-    expect(validateCustomPrompt('roll a joint, warm lighting').isValid).toBe(false);
+    expect(validateCustomPrompt('holding a gun, moody lighting').isValid).toBe(false);
+    expect(validateCustomPrompt('make me look like a teen, soft lighting').isValid).toBe(false);
+  });
+
+  it('no longer carries words whose only effect was false positives', () => {
+    // 'dead', 'joint', 'space', 'kid', 'flying' and 'driving' were dropped
+    // from the list rather than kept and worked around. Each of them
+    // refused a plausible headshot request and protected nothing: the
+    // things actually worth blocking are covered by narrower rules.
+    expect(validateCustomPrompt('meet the deadline look, crisp lighting').isValid).toBe(true);
+    expect(validateCustomPrompt('jointly lit from both sides, soft shadows').isValid).toBe(true);
+    expect(validateCustomPrompt('more space between me and the background').isValid).toBe(true);
   });
 });

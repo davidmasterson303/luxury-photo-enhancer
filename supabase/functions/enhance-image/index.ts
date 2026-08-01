@@ -7,6 +7,7 @@ import {
   jsonResponse,
 } from "./guards.ts";
 import { BUDGET_RESPONSE, reserveCall } from "./budget.ts";
+import { evaluatePrompt } from "./promptRules.ts";
 
 const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY") ?? "";
 const GEMINI_API_URL = generateContentUrl(IMAGE_MODEL);
@@ -15,76 +16,23 @@ const GEMINI_API_URL = generateContentUrl(IMAGE_MODEL);
  * customs, so 12/min is roughly two full sessions back to back. */
 const isRateLimited = createRateLimiter(12, 60_000);
 
-/* -- Prompt validation - word-boundary matching -------------------
- * Substring matching produced false positives ("fireplace" -> 'fire',
- * "space between" -> 'space'). Word boundaries fix those; the list is
- * trimmed to things that actually conflict with a professional
- * portrait. Error copy frames capability, not accusation. */
-const PROHIBITED_WORDS = [
-  "shark", "sharks", "dragon", "dragons", "unicorn", "unicorns",
-  "monster", "monsters", "alien", "aliens", "zombie", "zombies",
-  "vampire", "vampires", "werewolf", "werewolves",
-  "naked", "nude", "bikini", "shirtless", "topless", "underwear",
-  "celebrity", "famous",
-  "anime", "cartoon", "comic", "superhero",
-  "explosion", "weapon", "gun", "knife",
-  "blood", "gore", "violent", "death",
-  "drugs", "alcohol", "smoking",
-  "wizard", "witch", "magical",
-  "astronaut", "levitating",
-  "military", "soldier", "combat",
-];
-
-const CONTEXTUAL_WORDS = ["sexy", "seductive", "provocative", "sultry"];
-
-const NEGATION_PHRASES = [
-  "no ", "not ", "avoid ", "without ", "never ", "don't ", "do not ",
-  "absolutely no", "remove any", "eliminating", "excluding",
-];
-
 const PROMPT_BLOCKED_MESSAGE =
-  "We can only adjust lighting, background, clothing, and color - try describing those instead.";
+  "We can only adjust lighting, background, clothing, and colour - try describing those instead.";
 
-function hasWord(text: string, word: string): boolean {
-  return new RegExp(`\\b${word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(text);
-}
-
-/* A negation governs its own clause, so the search for one stops at the
- * clause boundary. A flat character window lets one early "no" launder
- * every later use of the word, which makes "no X and X" indistinguishable
- * from "no X and no X". */
-const CLAUSE_BOUNDARY = /[,.;:!?]|\band\b|\bbut\b|\bthen\b|\balso\b|\bplus\b/gi;
-
-/* True only when EVERY occurrence sits in a negation context.
+/* -- Prompt validation ---------------------------------------------
  *
- * This used to call text.search, which returns the FIRST match and nothing
- * else, so "no sexy lighting and sexy pose" was cleared on the strength of
- * its opening clause. Mirrors everyOccurrenceNegated in
- * src/services/imageValidation.ts - the word lists on the two sides differ
- * on purpose, the matching semantics must not. */
-function isInNegationContext(word: string, text: string): boolean {
-  const pattern = new RegExp(`\\b${word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "gi");
-  let found = false;
-
-  for (const match of text.matchAll(pattern)) {
-    found = true;
-    const segments = text.substring(0, match.index).split(CLAUSE_BOUNDARY);
-    const clause = segments[segments.length - 1];
-    if (!NEGATION_PHRASES.some((phrase) => clause.includes(phrase))) return false;
-  }
-
-  return found;
-}
-
+ * The rules live in promptRules.ts, byte-identical to the client's copy
+ * and held that way by promptRules.parity.test.ts. This is the
+ * authoritative gate: everything the client checks is guidance a caller
+ * skips simply by not being the client.
+ *
+ * The tripped category is logged and never returned. Telling a prober
+ * which rule fired tells them which word to change. */
 function validatePromptServerSide(prompt: string): { isValid: boolean; error?: string } {
-  const normalized = prompt.toLowerCase().trim();
-
-  for (const word of [...PROHIBITED_WORDS, ...CONTEXTUAL_WORDS]) {
-    if (hasWord(normalized, word) && !isInNegationContext(word, normalized)) {
-      return { isValid: false, error: PROMPT_BLOCKED_MESSAGE };
-    }
-  }
-  return { isValid: true };
+  const verdict = evaluatePrompt(prompt);
+  if (verdict.allowed) return { isValid: true };
+  console.warn("Prompt refused by rule category:", verdict.category);
+  return { isValid: false, error: PROMPT_BLOCKED_MESSAGE };
 }
 
 function arrayBufferToBase64(buffer: ArrayBuffer): string {
