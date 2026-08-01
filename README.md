@@ -5,6 +5,8 @@ and an image model recalibrates lighting, background, and attire while leaving t
 person's face alone. Four variations generate in parallel and fill into the grid
 as each one lands.
 
+![Lumière — the entry screen of the live demo](docs/hero-landing.png)
+
 **Live demo:** https://luxuryphotoenhancer-demo.davidmasterson.co
 
 A proof of concept, not a production product — built to explore what a
