@@ -185,7 +185,15 @@ This closes the "Not yet verified" note that has been open in
 
 ## Step 6 — Apply the migration
 
-Only once step 5 has produced a portrait.
+**Safe to do at any point, including before step 5.** An earlier draft of this
+runbook said to wait for a portrait first. That was over-cautious and conflated
+two different things: it is setting `DAILY_CALL_BUDGET` that must wait, not
+creating the table.
+
+With the budget unset, `reserveCall` returns `{ allowed: true }` on its second
+line and never queries the table at all — so the table's existence changes
+nothing observable and cannot muddy step 5's result. The ordering constraint is
+step 7 after step 5, and step 7 after step 6. Step 6 itself floats.
 
 The `demo_usage` table and `consume_demo_call` function do not exist yet, and
 CI does not apply migrations. Without them the budget code fails **closed**.
@@ -196,6 +204,22 @@ CI does not apply migrations. Without them the budget code fails **closed**.
    (or on GitHub) and paste the whole file
 4. **Run**
 5. Confirm: **Table Editor** → `demo_usage` exists, zero rows
+
+Then verify the part that actually matters. The migration revokes `EXECUTE` on
+the counter from `anon`, because Supabase exposes every public-schema function
+over PostgREST and the anon key ships in the client bundle by design. If that
+revoke did not apply, any visitor could drain the day's budget without
+generating a single portrait. Run this in the SQL Editor:
+
+```sql
+select
+  has_function_privilege('anon',          'consume_demo_call(integer)', 'execute') as anon_can_call,
+  has_function_privilege('authenticated', 'consume_demo_call(integer)', 'execute') as authed_can_call,
+  has_function_privilege('service_role',  'consume_demo_call(integer)', 'execute') as service_can_call;
+```
+
+Expect `false, false, true`. Anything else means the grants did not take, and
+the spend ceiling has a hole in it that the table existing does not reveal.
 
 Note: running it through the SQL Editor applies the schema but does not record
 it in the CLI's migration history. Fine for a demo. If you ever run
@@ -256,8 +280,9 @@ code being correct.
      deploy-functions goes red on the missing token — expected
 5. Upload a photo; confirm a portrait generates          ← budget still OFF
      proves generation, NOT that functions match main
-6. Apply the migration in the SQL Editor
-7. Set DAILY_CALL_BUDGET; confirm demo_usage increments
+6. Apply the migration in the SQL Editor    ← floats; safe before 5 too
+     verify anon cannot EXECUTE consume_demo_call
+7. Set DAILY_CALL_BUDGET; confirm demo_usage increments   ← needs 5 and 6
 8. Cap quota/billing at Google
    ·  Add SUPABASE_ACCESS_TOKEN whenever — closes the step 5 gap
 ```
