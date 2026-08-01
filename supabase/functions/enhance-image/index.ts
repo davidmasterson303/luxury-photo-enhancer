@@ -50,11 +50,31 @@ function hasWord(text: string, word: string): boolean {
   return new RegExp(`\\b${word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(text);
 }
 
+/* A negation governs its own clause, so the search for one stops at the
+ * clause boundary. A flat character window lets one early "no" launder
+ * every later use of the word, which makes "no X and X" indistinguishable
+ * from "no X and no X". */
+const CLAUSE_BOUNDARY = /[,.;:!?]|\band\b|\bbut\b|\bthen\b|\balso\b|\bplus\b/gi;
+
+/* True only when EVERY occurrence sits in a negation context.
+ *
+ * This used to call text.search, which returns the FIRST match and nothing
+ * else, so "no sexy lighting and sexy pose" was cleared on the strength of
+ * its opening clause. Mirrors everyOccurrenceNegated in
+ * src/services/imageValidation.ts - the word lists on the two sides differ
+ * on purpose, the matching semantics must not. */
 function isInNegationContext(word: string, text: string): boolean {
-  const idx = text.search(new RegExp(`\\b${word}\\b`, "i"));
-  if (idx === -1) return false;
-  const preceding = text.substring(Math.max(0, idx - 50), idx);
-  return NEGATION_PHRASES.some((phrase) => preceding.includes(phrase));
+  const pattern = new RegExp(`\\b${word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "gi");
+  let found = false;
+
+  for (const match of text.matchAll(pattern)) {
+    found = true;
+    const segments = text.substring(0, match.index).split(CLAUSE_BOUNDARY);
+    const clause = segments[segments.length - 1];
+    if (!NEGATION_PHRASES.some((phrase) => clause.includes(phrase))) return false;
+  }
+
+  return found;
 }
 
 function validatePromptServerSide(prompt: string): { isValid: boolean; error?: string } {
