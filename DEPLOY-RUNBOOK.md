@@ -177,13 +177,23 @@ Functions → `enhance-image` → Logs**, then look for the line beginning
 
 | Logged status | Cause | Fix |
 |---|---|---|
-| `403` / PERMISSION_DENIED / billing | The AI Studio project's API access is restricted — both projects currently show a "set up billing to continue" banner | Google Cloud → Billing, before touching anything in this repo |
-| `404` / model not found | The deployed function still calls a retired model ID | Ship the functions from CI (`SUPABASE_ACCESS_TOKEN`) |
+| `404` / model not found | Most likely. The deployed function still calls a retired model ID | Ship the functions from CI (`SUPABASE_ACCESS_TOKEN`) |
 | `429` | Rate or quota ceiling | Google quota, or the per-IP limiter in `guards.ts` |
+| `403` / PERMISSION_DENIED / billing | Unlikely — see below, but cheap to confirm from this line | Google Cloud → Billing |
 | No `Gemini API Error:` line at all | The request never reached Gemini | Guards, auth, or the budget check refusing first |
 
-Check this **before** debugging the Supabase side. Three different root causes
-share one error message, and the log is the only place they separate.
+Check this **before** debugging the Supabase side. Several root causes share one
+error message, and the log is the only place they separate.
+
+On the billing row: both AI Studio projects displayed an "API access is
+restricted, please set up billing" banner on 1 Aug, which was investigated and
+does not hold up — the account is Paid Tier 1 with a valid card, both projects
+attached, and a real charge cleared that same day. The banner appears spurious.
+
+It stays in the table because the evidence rules out *the billing account being
+dead*, which is a slightly broader claim than the banner made — the banner was
+scoped to the project. Reading one status code costs nothing and settles it
+completely, which beats reasoning about it a second time.
 
 ### What a successful upload does and does not prove
 
@@ -316,9 +326,9 @@ Two caveats worth carrying, neither a reason to change it:
   demo is dark until the month rolls over. Rate protection lives in this repo
   instead — the per-IP limiter in `guards.ts` and `DAILY_CALL_BUDGET` — which is
   the reverse of the usual arrangement and worth knowing when something runs hot.
-- **The same project currently shows an API-access-restricted banner.** A spend
-  ceiling on a billing account flagged unavailable is not the protection it
-  looks like. Resolve the restriction first; see step 5's log table.
+- ~~The same project shows an API-access-restricted banner.~~ Investigated
+  1 Aug and withdrawn: Paid Tier 1, valid card, both projects attached, a real
+  charge cleared the same day. The banner is spurious and the cap is real.
 
 The original suggestion, kept because it remains the right instrument if a rate
 ceiling is ever wanted at the provider:
