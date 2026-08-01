@@ -64,31 +64,59 @@ export async function validateImageForProfile(imageFile: File): Promise<Validati
   }
 }
 
+/* Negation vocabulary, matching validatePromptServerSide in
+ * supabase/functions/enhance-image/index.ts. The word lists on the two
+ * sides differ on purpose - the client's is longer because it is UX
+ * guidance and the server's is enforcement - but the *matching semantics*
+ * must agree, or the client rejects prompts the server would have run.
+ *
+ * Known limit, shared with the server: "nothing sultry" and "nor sexy"
+ * are not recognised as negations. Adding them here alone would put the
+ * two sides out of step, which is the failure this is fixing. */
+const NEGATION_PHRASES = [
+  'no ', 'not ', 'avoid ', 'without ', 'never ', "don't ", 'do not ',
+  'absolutely no', 'remove any', 'eliminating', 'excluding',
+];
+
+function hasWord(text: string, word: string): boolean {
+  return new RegExp(`\\b${word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(text);
+}
+
+/* A negation only governs its own clause. Scanning a flat window of
+ * preceding characters lets one early "no" launder every later use of the
+ * word: with a 50-character lookback, "no sexy lighting and sexy pose"
+ * reads as fully negated, because the second occurrence can still see the
+ * "no " belonging to the first. Cutting at the clause boundary is what
+ * makes "no X and X" behave differently from "no X and no X". */
+const CLAUSE_BOUNDARY = /[,.;:!?]|\band\b|\bbut\b|\bthen\b|\balso\b|\bplus\b/gi;
+
+/* True only when EVERY occurrence of the word sits in a negation context.
+ *
+ * Checking every occurrence is the point. The previous implementation
+ * located one occurrence with indexOf and compared its offset against an
+ * allowed phrase's offset with a magic `< phrase.length + 5` window. That
+ * failed in both directions: "no sexy poses, but make the pose sexy" was
+ * cleared because only the first occurrence was ever examined, while
+ * "professional headshot, not sexy" was rejected because "not sexy" was
+ * not one of the literal rescue phrases. Absolute string offsets never
+ * encoded the thing being asked - whether the word was being asked for. */
+function everyOccurrenceNegated(word: string, text: string): boolean {
+  const pattern = new RegExp(`\\b${word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'gi');
+  let found = false;
+
+  for (const match of text.matchAll(pattern)) {
+    found = true;
+    const preceding = text.substring(0, match.index);
+    const segments = preceding.split(CLAUSE_BOUNDARY);
+    const clause = segments[segments.length - 1];
+    if (!NEGATION_PHRASES.some(phrase => clause.includes(phrase))) return false;
+  }
+
+  return found;
+}
+
 export function validateCustomPrompt(prompt: string): ValidationResult {
   const normalizedPrompt = prompt.toLowerCase().trim();
-
-  const allowedPhrases = [
-    'no sexy',
-    'no sultry',
-    'no provocative',
-    'gender-appropriate',
-    'woman',
-    'man',
-    'female',
-    'male',
-  ];
-
-  const isAllowedPhrase = (keyword: string): boolean => {
-    return allowedPhrases.some(phrase => {
-      const regex = new RegExp(`\\b${phrase}\\b`, 'i');
-      const match = normalizedPrompt.match(regex);
-      if (!match) return false;
-
-      const keywordPos = normalizedPrompt.indexOf(keyword);
-      const phrasePos = match.index!;
-      return Math.abs(keywordPos - phrasePos) < phrase.length + 5;
-    });
-  };
 
   const prohibitedKeywords = [
     'shark', 'sharks', 'dragon', 'dragons', 'unicorn', 'unicorns',
@@ -114,8 +142,13 @@ export function validateCustomPrompt(prompt: string): ValidationResult {
 
   const conditionalKeywords = ['sexy', 'seductive', 'provocative', 'sultry'];
 
+  /* Word boundaries, not substrings. Plain `includes` rejected "more space
+   * between me and the background" on 'space', "meet the deadline look" on
+   * 'dead', and "jointly lit" on 'joint' - all legitimate prompts, and the
+   * first of those is a thing people actually ask for. The server fixed
+   * this months ago; the client had been left behind. */
   for (const keyword of prohibitedKeywords) {
-    if (normalizedPrompt.includes(keyword)) {
+    if (hasWord(normalizedPrompt, keyword)) {
       return {
         isValid: false,
         error: 'Your prompt contains content that is not appropriate for professional profile photos. Please focus on lighting, background, and clothing enhancements only.',
@@ -124,7 +157,7 @@ export function validateCustomPrompt(prompt: string): ValidationResult {
   }
 
   for (const keyword of conditionalKeywords) {
-    if (normalizedPrompt.includes(keyword) && !isAllowedPhrase(keyword)) {
+    if (hasWord(normalizedPrompt, keyword) && !everyOccurrenceNegated(keyword, normalizedPrompt)) {
       return {
         isValid: false,
         error: 'Your prompt contains content that is not appropriate for professional profile photos. Please focus on lighting, background, and clothing enhancements only.',
