@@ -162,6 +162,29 @@ it means the backend behaviour genuinely changes at this step.
 If it fails here, the failure is now honest — the budget is off, so anything
 you see is a real bug rather than a spend ceiling.
 
+### If it fails, read the function logs — not the screen
+
+The front end cannot tell you why. `enhance-image` maps Gemini failures to
+`RATE_LIMITED` on 429, `UPSTREAM_ERROR` on 5xx, and `GENERATION_FAILED` on
+everything else — so a 403 (billing restricted) and a 404 (retired model ID)
+both surface as *"That photo could not be enhanced. Try a different photo."*
+The app blames the photo for an account problem, and every hypothesis below
+looks identical from the browser.
+
+The function logs the real answer verbatim. **Supabase dashboard → Edge
+Functions → `enhance-image` → Logs**, then look for the line beginning
+`Gemini API Error:`:
+
+| Logged status | Cause | Fix |
+|---|---|---|
+| `403` / PERMISSION_DENIED / billing | The AI Studio project's API access is restricted — both projects currently show a "set up billing to continue" banner | Google Cloud → Billing, before touching anything in this repo |
+| `404` / model not found | The deployed function still calls a retired model ID | Ship the functions from CI (`SUPABASE_ACCESS_TOKEN`) |
+| `429` | Rate or quota ceiling | Google quota, or the per-IP limiter in `guards.ts` |
+| No `Gemini API Error:` line at all | The request never reached Gemini | Guards, auth, or the budget check refusing first |
+
+Check this **before** debugging the Supabase side. Three different root causes
+share one error message, and the log is the only place they separate.
+
 ### What a successful upload does and does not prove
 
 It proves generation works. It does **not** prove the deployed edge functions
@@ -281,10 +304,27 @@ Everything above is application-level. It protects against a busy demo, not
 against a bug in the demo. A cap at the provider is the layer that holds when
 the app's own accounting is wrong.
 
-In the Google Cloud console for the project holding the Gemini key:
+**Done — 2026-08-01.** AI Studio monthly spend cap of **$5.00** on
+`gen-lang-client-0975561319` ("Headshot Enhancer"), matching CrewChief's
+precedent and independent of any code here. Denominated in money rather than
+requests, so it survives a change in per-call pricing without re-deriving.
+
+Two caveats worth carrying, neither a reason to change it:
+
+- **A monthly cap bounds the wallet, not the rate.** Nothing at Google stops
+  $5 being spent in an afternoon; it stops the sixth dollar. If that happens the
+  demo is dark until the month rolls over. Rate protection lives in this repo
+  instead — the per-IP limiter in `guards.ts` and `DAILY_CALL_BUDGET` — which is
+  the reverse of the usual arrangement and worth knowing when something runs hot.
+- **The same project currently shows an API-access-restricted banner.** A spend
+  ceiling on a billing account flagged unavailable is not the protection it
+  looks like. Resolve the restriction first; see step 5's log table.
+
+The original suggestion, kept because it remains the right instrument if a rate
+ceiling is ever wanted at the provider:
 
 - **Quota limit** on the Generative Language API (APIs & Services → the API →
-  Quotas). This is the one that actually stops anything.
+  Quotas). The only control that caps requests per minute.
 - **Budget alert** on the billing account (Billing → Budgets & alerts).
 
 **These are not two flavours of the same protection, and the difference is the
