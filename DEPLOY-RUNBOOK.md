@@ -186,14 +186,21 @@ Check this **before** debugging the Supabase side. Several root causes share one
 error message, and the log is the only place they separate.
 
 On the billing row: both AI Studio projects displayed an "API access is
-restricted, please set up billing" banner on 1 Aug, which was investigated and
-does not hold up — the account is Paid Tier 1 with a valid card, both projects
-attached, and a real charge cleared that same day. The banner appears spurious.
+restricted, please set up billing" banner on 1 Aug. **That banner was real.** The
+card on the account needed updating, and it was updated the same day, which is
+what cleared it.
 
-It stays in the table because the evidence rules out *the billing account being
-dead*, which is a slightly broader claim than the banner made — the banner was
-scoped to the project. Reading one status code costs nothing and settles it
-completely, which beats reasoning about it a second time.
+It was briefly written off as spurious, on the strength of a billing page showing
+Paid Tier 1, a valid card and a charge clearing that day. Every one of those
+observations was true — and all of them were true *because the card had just been
+replaced*. Current state cannot tell "never broken" apart from "just fixed", and
+reading a repaired system as proof of no fault is an easy way to dismiss a real
+finding.
+
+The practical consequence is small, because the fix landed before anything
+depended on it: billing is genuinely healthy now, so a 403 is unlikely from here.
+The row stays because it costs one glance at a log that will already be open, and
+because the original banner deserved more credit than it got.
 
 ### What a successful upload does and does not prove
 
@@ -326,9 +333,11 @@ Two caveats worth carrying, neither a reason to change it:
   demo is dark until the month rolls over. Rate protection lives in this repo
   instead — the per-IP limiter in `guards.ts` and `DAILY_CALL_BUDGET` — which is
   the reverse of the usual arrangement and worth knowing when something runs hot.
-- ~~The same project shows an API-access-restricted banner.~~ Investigated
-  1 Aug and withdrawn: Paid Tier 1, valid card, both projects attached, a real
-  charge cleared the same day. The banner is spurious and the cap is real.
+- **The API-access-restricted banner on this project was real, and is resolved.**
+  The card on the billing account needed replacing; that happened on 1 Aug and
+  cleared it. So the cap now sits on a working account, which is what makes it a
+  ceiling rather than a decoration. See step 5 for why it was briefly, and
+  wrongly, written off as spurious.
 
 The original suggestion, kept because it remains the right instrument if a rate
 ceiling is ever wanted at the provider:
