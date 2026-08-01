@@ -74,8 +74,25 @@ outright (bad prompt, bad request, unauthorized) fail immediately instead of
 burning a second call to be told the same thing.
 
 **Substring matching on a blocklist gives false positives.** "fireplace" matched
-`fire`; "space between" matched `space`. Prompt validation is word-boundary
-matched, with negation handling so "no weapons" does not trip `weapon`.
+`fire`; "deadline" matched `dead`; "jointly" matched `joint`. Both sides are
+word-boundary matched now, with negation handling so "no weapons" does not trip
+`weapon`.
+
+**Negation has a scope, and offsets do not express it.** The client used to
+rescue a negated keyword by finding it with `indexOf`, finding an allowed phrase
+with a regex, and comparing the two string offsets against a `< length + 5`
+window. It failed in both directions — "no sexy lighting and sexy pose" passed,
+because only the first occurrence was ever examined, while "not sexy" was
+rejected for not being one of the literal rescue phrases. Every occurrence is
+checked now, and the search for a negation stops at the clause boundary rather
+than running back a fixed number of characters: otherwise one opening "no"
+launders every later use of the word, and "no X and X" cannot be told apart from
+"no X and no X".
+
+The two sides deliberately keep *different word lists* — the client's is longer
+because it is UX guidance, the server's is trimmed to what it will actually
+enforce — but they share matching semantics. Where they differ, the server wins,
+because it is the one a `curl` has to get past.
 
 **HEIC is the likeliest input and the one that did not work.** iPhones shoot
 HEIC, and no browser engine outside Safari decodes it. The format was advertised
@@ -125,6 +142,18 @@ recoverable, an unbounded bill is not.
 
 Today's usage lives in `demo_usage`. Row-level security is on with no policies,
 so only the service role — i.e. the Edge Functions — can read or write it.
+
+> **Apply the migration before setting `DAILY_CALL_BUDGET`.** CI deploys the
+> functions but does not run migrations, so `demo_usage` and `consume_demo_call`
+> have to be applied to the project first — `supabase db push`, or paste
+> `supabase/migrations/20260731120000_create_demo_usage.sql` into the SQL Editor.
+> Setting the budget without them means every budget check errors, and because
+> the check fails closed, every visitor gets "fully booked today" — which looks
+> exactly like a working ceiling. Verify a generation succeeds *before* turning
+> the budget on, so the two states stay distinguishable.
+
+Deployment, and the order to do it in, is in
+[DEPLOY-RUNBOOK.md](DEPLOY-RUNBOOK.md).
 
 ## Stack
 
