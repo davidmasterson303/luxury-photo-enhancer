@@ -4,7 +4,6 @@ import {
   clientIp,
   corsHeadersFor,
   createRateLimiter,
-  hasValidAnonKey,
   jsonResponse,
 } from "./guards.ts";
 import { BUDGET_RESPONSE, reserveCall } from "./budget.ts";
@@ -107,10 +106,6 @@ Deno.serve(async (req: Request) => {
 
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 200, headers: cors });
-  }
-
-  if (!hasValidAnonKey(req)) {
-    return jsonResponse({ error: "Unauthorized", code: "UNAUTHORIZED" }, 401, cors);
   }
 
   if (isRateLimited(clientIp(req))) {

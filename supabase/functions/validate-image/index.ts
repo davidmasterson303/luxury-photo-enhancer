@@ -4,7 +4,6 @@ import {
   clientIp,
   corsHeadersFor,
   createRateLimiter,
-  hasValidAnonKey,
   jsonResponse,
 } from "./guards.ts";
 import { BUDGET_RESPONSE, reserveCall } from "./budget.ts";
@@ -83,16 +82,6 @@ Deno.serve(async (req: Request) => {
       status: 200,
       headers: corsHeaders,
     });
-  }
-
-  /* This endpoint spends Gemini quota, so it carries the same guards as
-   * enhance-image. It shipped with neither and was open to any POST. */
-  if (!hasValidAnonKey(req)) {
-    return jsonResponse(
-      { isValid: false, error: "Unauthorized", code: "UNAUTHORIZED" },
-      401,
-      corsHeaders,
-    );
   }
 
   if (isRateLimited(clientIp(req))) {

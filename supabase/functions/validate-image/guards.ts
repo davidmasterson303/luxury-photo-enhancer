@@ -45,21 +45,31 @@ export function jsonResponse(
   });
 }
 
-/* Injected automatically into every Supabase Edge Function. */
-const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
-
-/* The anon key is public by design, so this is not authentication -
- * it only means a caller has to have loaded our client at least once.
- * That is enough to stop the cheap abuse case: a curl loop that found
- * the function URL and never touched the site. Skipped when the env
- * var is absent so local `supabase functions serve` still works. */
-export function hasValidAnonKey(req: Request): boolean {
-  if (!SUPABASE_ANON_KEY) return true;
-  const authHeader = req.headers.get("authorization") ?? "";
-  const apiKeyHeader = req.headers.get("apikey") ?? "";
-  const bearer = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
-  return bearer === SUPABASE_ANON_KEY || apiKeyHeader === SUPABASE_ANON_KEY;
-}
+/* -- Why there is no app-level key check here ----------------------
+ *
+ * There used to be one: a string comparison of the caller's key against
+ * Deno.env.get("SUPABASE_ANON_KEY"). It was removed on 2026-08-01 after
+ * it locked every real visitor out of enhance-image with a 401.
+ *
+ * The cause is that this project has Supabase's newer API key system
+ * enabled (sb_publishable_... / sb_secret_...) alongside the legacy JWT
+ * keys. SUPABASE_ANON_KEY as injected into a function is the publishable
+ * key; the browser bundle ships the legacy anon JWT. Both are valid
+ * credentials for this project, they are simply different strings, so an
+ * equality check rejects a caller the platform itself accepts.
+ *
+ * It is not worth repairing. The check was never authentication - the
+ * anon key ships in the client bundle by design, so "has the key" means
+ * "read our JavaScript". Its only claim was stopping a curl loop that
+ * never loaded the site, and verify_jwt (see supabase/config.toml) does
+ * exactly that at the gateway, before this code runs.
+ *
+ * The controls that actually bound spend are below: the per-IP window in
+ * this file, and the daily ceiling in budget.ts.
+ *
+ * If verify_jwt is ever turned off, that gateway check disappears and
+ * these endpoints become reachable by any POST. Do not turn it off.
+ */
 
 export function clientIp(req: Request): string {
   return (
