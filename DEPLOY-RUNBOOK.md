@@ -20,7 +20,7 @@ identical to two different causes.
 | Live front end | Netlify, current with `main`'s front-end code |
 | Live front end talks to | `ngubpkpgpdbklyvygoww.supabase.co` — **deleted, NXDOMAIN** |
 | `supabase/config.toml` says | `yfstictbmgguktlxeasr` — alive, returns 401 as expected |
-| Local `main` | one commit ahead of `origin/main`, deliberately unpushed |
+| Local `main` | six commits ahead of `origin/main`, deliberately unpushed |
 | Edge functions live | whatever was last hand-pasted into the dashboard; unknown |
 | `demo_usage` table | never applied — CI does not run migrations |
 
@@ -40,9 +40,18 @@ config off an artifact instead of the source is the exact move that caused this.
 3. Left sidebar → **Project Settings** (gear, bottom) → **API**
 4. Read **Project URL**. It looks like `https://<ref>.supabase.co`
 
-Write down that `<ref>`. Also on this page, under **Project API keys**, copy the
-**`anon` / `public`** key — you need it in step 2. (Not `service_role`; that one
-is for step 5 and never goes in the front end.)
+Write down that `<ref>`.
+
+**You do not need the anon key.** It was checked and is already correct. Supabase
+anon keys are JWTs carrying the project ref as a claim, and the one in the live
+bundle decodes to `{"iss":"supabase","ref":"yfstictbmgguktlxeasr","role":"anon"}`
+— so the deployed front end has been shipping a valid key for the live project
+next to a URL pointing at a deleted one. A mismatched pair, and only the URL half
+is wrong. Re-entering the key would be motion without progress.
+
+That decode is also the best confirmation of the ref available, better than
+anything else here: it comes from a credential Supabase itself issued and signed,
+not from a file in the repo claiming a value.
 
 **If the ref is `yfstictbmgguktlxeasr`** — matches the repo. Continue to step 2.
 
@@ -53,29 +62,40 @@ rather than discovering it in a red run.
 
 ---
 
-## Step 2 — Correct the GitHub secrets
+## Step 2 — Correct the one stale secret
+
+Exactly one field. Everything else on this page is already right.
 
 1. <https://github.com/davidmasterson303/luxury-photo-enhancer>
 2. **Settings** tab → left sidebar **Secrets and variables** → **Actions**
-3. Find `VITE_SUPABASE_URL` → pencil icon → replace with `https://<ref>.supabase.co`
-   from step 1 → **Update secret**
+3. Find `VITE_SUPABASE_URL` → pencil icon → paste:
+
+   ```
+   https://yfstictbmgguktlxeasr.supabase.co
+   ```
+
+   → **Update secret**
    - No trailing path, no trailing spaces. A trailing `/` is fine — the
      preflight tolerates it.
-4. Find `VITE_SUPABASE_ANON_KEY` → pencil → replace with the `anon` key from
-   step 1 → **Update secret**
-   - Must be from the *same* project. A valid key for the wrong project fails
-     at runtime with an opaque 401, which is a miserable thing to debug.
+   - GitHub may interrupt with sudo-mode re-authentication ("Confirm access →
+     Verify via email"). Complete it, then re-check the field: it can clear on
+     the way back, and the update silently does not apply.
+   - Confirm the **Updated** timestamp changes. If it still reads the old date,
+     the save did not go through — this has already happened once.
 
-While you're on this page, confirm these four exist. CI stops with a named
-error if any are missing, but checking now is cheaper than a red run:
+`VITE_SUPABASE_ANON_KEY` is correct — see step 1. Do not touch it.
 
-- `VITE_SUPABASE_URL`
-- `VITE_SUPABASE_ANON_KEY`
-- `NETLIFY_AUTH_TOKEN`
-- `NETLIFY_SITE_ID`
-- `SUPABASE_ACCESS_TOKEN` — needed by the functions job. If it's absent:
-  Supabase dashboard → click your avatar (top right) → **Access Tokens** →
-  **Generate new token**. Copy it immediately; it is shown once.
+### `SUPABASE_ACCESS_TOKEN` — needed, but not blocking today
+
+The repo currently holds four secrets and this is not among them, so the
+functions job will stop at its preflight with the secret named. That is the
+designed behaviour, not a failure: the two deploy jobs are independent, so the
+front end deploys anyway and step 5 becomes possible without it.
+
+It is not optional, though — only that job closes the gap described in step 5.
+When you want it: Supabase dashboard → avatar (top right) → **Access Tokens** →
+**Generate new token**. Copy it immediately; it is shown once. Then add it here
+as a repository secret.
 
 ---
 
@@ -141,6 +161,22 @@ it means the backend behaviour genuinely changes at this step.
 
 If it fails here, the failure is now honest — the budget is off, so anything
 you see is a real bug rather than a spend ceiling.
+
+### What a successful upload does and does not prove
+
+It proves generation works. It does **not** prove the deployed edge functions
+match `main`.
+
+The functions on that project were deployed by hand and their vintage is
+unknown. Validation fails open by design, so a months-stale `validate-image`
+returning 500 is invisible from the front end — generation carries on and a
+portrait still appears. A retired model ID sat in that function for exactly this
+reason once already.
+
+Only the `deploy-functions` job closes that gap, which is what makes
+`SUPABASE_ACCESS_TOKEN` not-optional even though it is not blocking today. Until
+that job runs green, treat the backend as "works" rather than "is what the repo
+says".
 
 This closes the "Not yet verified" note that has been open in
 `CODE-REVIEW-HANDOFF.md` since 30 July.
@@ -213,14 +249,17 @@ code being correct.
 ## Sequence at a glance
 
 ```
-1. Read the real ref + anon key from Supabase Settings → API   (by eye)
-2. Update VITE_SUPABASE_URL + VITE_SUPABASE_ANON_KEY on GitHub
-3. Push (GitHub Desktop) — preflight ships with it
-4. Watch Actions; both preflights must log a matching ref
+1. Read the real ref from Supabase Settings → API              (by eye)
+2. Update VITE_SUPABASE_URL on GitHub          ← the only stale value
+3. Push six commits (GitHub Desktop) — preflight ships with them
+4. Watch Actions; the Netlify preflight must log a matching ref
+     deploy-functions goes red on the missing token — expected
 5. Upload a photo; confirm a portrait generates          ← budget still OFF
+     proves generation, NOT that functions match main
 6. Apply the migration in the SQL Editor
 7. Set DAILY_CALL_BUDGET; confirm demo_usage increments
 8. Cap quota/billing at Google
+   ·  Add SUPABASE_ACCESS_TOKEN whenever — closes the step 5 gap
 ```
 
 Steps 1–5 fix the outage. 6–8 are spend protection and can wait, but should
@@ -230,17 +269,34 @@ land before the link is promoted anywhere.
 
 ## Still open after this runbook
 
-Tracked in `CODE-REVIEW-HANDOFF.md`; neither blocks shipping.
+Tracked in `CODE-REVIEW-HANDOFF.md`; none of it blocks shipping.
 
 - **Item 3 — README screenshot.** The one gap in the repo first-impression
   pass, and the plan called it the single highest-value addition in the
-  document. ~20 minutes.
-- **Item 8a — the two prohibited-word lists.** Downscoped: the server is
-  authoritative and the client list is UX guidance, so drift costs a visitor
-  nothing. The part worth doing is deleting the `+ 5` position window in
-  `isAllowedPhrase` (`src/services/imageValidation.ts:89`), which compares
-  absolute string offsets and will misfire on a prompt using the keyword twice
-  — that one can wrongly reject a legitimate prompt.
+  document. Naturally step 5's tail: the shot worth having is the
+  four-variation grid mid-fill, which needs a reachable backend.
+- **Item 8a — the two prohibited-word lists.** The matching semantics were
+  unified on both sides and the `+ 5` offset window is gone. What remains is a
+  per-word question, not a structural one: *would you want this blocked on the
+  server too?*
+  - `space`, `flying`, `driving`, `motorcycle`, `kid`, `historical` — no.
+    Accidental strictness on plausible prompts. `space` is safe to delete
+    outright: `/in (space|underwater)/i` in `phrasePatterns` already catches
+    the actual risk, so "in space" stays blocked while "more space between me
+    and the background" starts working.
+  - `younger`, `older`, `child`, `baby`, `plastic surgery` — arguably yes, in
+    which case they belong on the *server*, because that is the gate `curl`
+    cannot skip. Blocking identity and age changes client-side only is
+    protection you lose to anyone who reads the network tab.
+- **The structural fix, once the functions job proves out.** CI deploying
+  functions removes the flat-file-tree constraint that forced the duplication
+  banners, so `supabase/functions/_shared/prompt-rules.ts` becomes viable — one
+  list, imported by both sides, drift impossible rather than policed. These
+  lists are a better candidate than `guards`/`budget`/`models`, which are
+  duplicated but identical; these two actually diverged, and semantically.
+  The cost: it commits the project to CI-only function deploys, since the
+  dashboard editor cannot express `../_shared/`. Worth paying, but worth
+  knowing before an incident rather than during one.
 - **Item 10 — collapsing `variationStatus` / `photoState.variations`.** Cut.
   Already optional in the plan, and merging the arrays now risks a fresh
   desync bug in the one flow visitors actually walk.
