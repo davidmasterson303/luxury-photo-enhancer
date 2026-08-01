@@ -230,9 +230,32 @@ FUNCTION` make it safe to re-apply.
 
 ## Step 7 — Turn on the daily budget
 
-Only once step 6 is done. Turning it on before the table exists makes every
-visitor see "The atelier is fully booked today" — indistinguishable from a
-working ceiling, which is why this is last.
+**Two preconditions, and the second is easy to miss.**
+
+**Step 6 must be done.** Turning the budget on before the table exists makes
+every visitor see "The atelier is fully booked today" — indistinguishable from a
+working ceiling.
+
+**`deploy-functions` must have run green at least once.** The budget code
+(`budget.ts`, `reserveCall`) entered the repo on 31 July in `011aca8`, and until
+that job runs, the only way it reached the live project is if someone hand-pasted
+it into the dashboard on or after that date. If the deployed function predates
+it, setting `DAILY_CALL_BUDGET` does nothing at all: the demo keeps working and
+`demo_usage` stays empty — which reads exactly like a misconfigured secret, and
+sends you back to re-check the migration and the grants you already verified.
+
+Note the asymmetry, because it tells you which failure you are looking at:
+
+| What you see | What it means |
+|---|---|
+| Demo works, `calls` climbing by 5 per upload | Working as intended |
+| Demo works, `demo_usage` stays empty | Deployed function predates the budget code — ship the functions first |
+| Every visitor gets "fully booked" | Table missing, or `SUPABASE_SERVICE_ROLE_KEY` / `SUPABASE_URL` not reaching the function — it fails closed on purpose |
+
+There is a bonus in doing it in this order: the counter incrementing is direct
+observable proof that the deployed function contains post-31-July code. That is
+a stronger check that the functions job really shipped than the job's own green
+tick, which only proves the CLI exited zero.
 
 1. Supabase dashboard → **Project Settings** → **Edge Functions** → **Secrets**
    (some layouts: Settings → **Functions** → Secrets)
@@ -282,9 +305,10 @@ code being correct.
      proves generation, NOT that functions match main
 6. Apply the migration in the SQL Editor    ← floats; safe before 5 too
      verify anon cannot EXECUTE consume_demo_call
-7. Set DAILY_CALL_BUDGET; confirm demo_usage increments   ← needs 5 and 6
+     ·  Add SUPABASE_ACCESS_TOKEN, re-run — functions ship from the repo
+        required before 7, or 7's result cannot be interpreted
+7. Set DAILY_CALL_BUDGET; confirm demo_usage increments   ← needs 5, 6, functions
 8. Cap quota/billing at Google
-   ·  Add SUPABASE_ACCESS_TOKEN whenever — closes the step 5 gap
 ```
 
 Steps 1–5 fix the outage. 6–8 are spend protection and can wait, but should
