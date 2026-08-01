@@ -12,6 +12,7 @@ import {
   enhanceImage,
   resizeImageIfNeeded,
   ImageDecodeError,
+  type CleanupFlags,
 } from './services/imageEnhancement';
 import { validateImageForProfile } from './services/imageValidation';
 import { AppStep, InputMode, PhotoState, VariationStatus } from './types';
@@ -43,7 +44,7 @@ function App() {
   // in the same tick the value is decided — state would be a stale closure
   // (which is exactly the bug this replaces: person-removal never applied
   // on the first generation pass).
-  const personRemovalRef = useRef(false);
+  const cleanupRef = useRef<CleanupFlags>({});
   const resizedFileRef = useRef<File | null>(null);
   const originalUrlRef = useRef<string | null>(null);
 
@@ -60,7 +61,7 @@ function App() {
     setError('');
     setValidationError(null);
     setAtCapacity(false);
-    personRemovalRef.current = false;
+    cleanupRef.current = {};
 
     if (!skipValidation) {
       setIsProcessing(true);
@@ -85,7 +86,10 @@ function App() {
         setInputMode(null);
         return;
       }
-      personRemovalRef.current = validationResult.needsPersonRemoval || false;
+      cleanupRef.current = {
+        people: validationResult.needsPersonRemoval || false,
+        animals: validationResult.needsAnimalRemoval || false,
+      };
     }
 
     releaseOriginalUrl();
@@ -100,15 +104,15 @@ function App() {
     });
     // Move to the grid immediately — variations fill in as each one lands.
     setStep('variations');
-    await generateVariations(file, personRemovalRef.current);
+    await generateVariations(file, cleanupRef.current);
   };
 
-  const runVariation = async (resizedFile: File, index: number, personRemoval: boolean) => {
+  const runVariation = async (resizedFile: File, index: number, cleanup: CleanupFlags) => {
     setVariationStatus(prev => prev.map((s, i) => (i === index ? 'pending' : s)));
     const result = await enhanceImage(
       resizedFile,
       AUTO_VARIATION_PROMPTS[index].prompt,
-      personRemoval
+      cleanup
     );
     if (result.success && result.enhancedImageUrl) {
       setPhotoState(prev => ({
@@ -124,7 +128,7 @@ function App() {
     return result;
   };
 
-  const generateVariations = async (file: File, personRemoval: boolean) => {
+  const generateVariations = async (file: File, cleanup: CleanupFlags) => {
     setVariationStatus(Array(VARIATION_COUNT).fill('pending'));
     try {
       const resizedFile = await resizeImageIfNeeded(file);
@@ -133,7 +137,7 @@ function App() {
       // allSettled + per-slot updates: one failed call no longer throws away
       // three successful (paid) generations behind a single error screen.
       const results = await Promise.allSettled(
-        AUTO_VARIATION_PROMPTS.map((_, i) => runVariation(resizedFile, i, personRemoval))
+        AUTO_VARIATION_PROMPTS.map((_, i) => runVariation(resizedFile, i, cleanup))
       );
 
       const outcomes = results.map(r =>
@@ -176,7 +180,7 @@ function App() {
         resizedFileRef.current ??
         (photoState.file ? await resizeImageIfNeeded(photoState.file) : null);
       if (!resizedFile) return;
-      await runVariation(resizedFile, index, personRemovalRef.current);
+      await runVariation(resizedFile, index, cleanupRef.current);
     } catch (err) {
       console.error('Retry error:', err);
       setVariationStatus(prev => prev.map((s, i) => (i === index ? 'failed' : s)));
@@ -220,7 +224,7 @@ function App() {
 
     try {
       const resizedFile = resizedFileRef.current ?? (await resizeImageIfNeeded(photoState.file));
-      const result = await enhanceImage(resizedFile, prompt, personRemovalRef.current);
+      const result = await enhanceImage(resizedFile, prompt, cleanupRef.current);
 
       if (result.success && result.enhancedImageUrl) {
         setPhotoState(prev => ({ ...prev, enhanced: result.enhancedImageUrl! }));

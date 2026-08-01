@@ -129,6 +129,7 @@ Deno.serve(async (req: Request) => {
     const imageFile = formData.get("image") as File;
     const prompt = formData.get("prompt") as string;
     const needsPersonRemoval = formData.get("needs_person_removal") === "true";
+    const needsAnimalRemoval = formData.get("needs_animal_removal") === "true";
 
     if (!imageFile || !prompt) {
       return jsonResponse(
@@ -152,8 +153,40 @@ Deno.serve(async (req: Request) => {
 
     let enhancementPrompt = prompt;
 
+    /* -- Cleanup preamble --------------------------------------------------
+     *
+     * The product forces the happy path: a photo with the subject's partner,
+     * friends or dog in it is not refused, it is cleaned up. So the preamble
+     * is assembled from whatever the validator actually saw rather than being
+     * one fixed string, and the subject-preservation clause is stated once at
+     * the end where it governs everything above it.
+     *
+     * Ordering matters. Removal is instructed before the style prompt so the
+     * model composes the scene first and lights it second; asking for both at
+     * once produced edits where a removed figure left a lit but empty shape. */
+    const removals: string[] = [];
     if (needsPersonRemoval) {
-      enhancementPrompt = `First, carefully identify and remove any additional people from this photo, keeping ONLY the main primary subject person. Fill in the removed areas naturally with appropriate background that matches the scene. Then apply these enhancements: ${prompt}. The main subject's face, features, and appearance must remain completely unchanged - only remove other people and enhance the photo quality, lighting, and composition.`;
+      removals.push(
+        "remove every additional person, keeping ONLY the single main subject",
+      );
+    }
+    if (needsAnimalRemoval) {
+      removals.push(
+        "remove any pets or animals, including any leads, collars or carriers they are attached to",
+      );
+    }
+
+    if (removals.length > 0) {
+      enhancementPrompt =
+        `First, ${removals.join(", and ")}. ` +
+        `Reconstruct the vacated areas naturally, matching the surrounding background, ` +
+        `lighting and perspective so no silhouette, blur patch or empty shape remains. ` +
+        `If the subject was touching, holding or leaning on what you removed, redraw ` +
+        `their arms and hands in a natural resting position consistent with their pose. ` +
+        `Then apply these enhancements: ${prompt}. ` +
+        `Throughout, the main subject's face, facial features, expression, skin, hair and ` +
+        `body proportions must remain completely unchanged — you are removing other ` +
+        `subjects and improving the photograph, never altering the person themselves.`;
     }
 
     const requestBody = {

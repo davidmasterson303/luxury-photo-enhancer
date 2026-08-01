@@ -191,7 +191,7 @@ describe('enhanceImage — request shape', () => {
       .mockResolvedValue(jsonResponse(200, { enhanced_image_url: 'data:image/png;base64,OK' }));
     vi.stubGlobal('fetch', fetchMock);
 
-    await runToCompletion(enhanceImage(file(), 'warmer lighting', true));
+    await runToCompletion(enhanceImage(file(), 'warmer lighting', { people: true, animals: true }));
 
     const [, init] = fetchMock.mock.calls[0];
     const headers = init.headers as Record<string, string>;
@@ -211,6 +211,7 @@ describe('enhanceImage — request shape', () => {
     expect(sentPrompt).toContain('warmer lighting');
     expect(sentPrompt).toContain('Do not alter hair length');
     expect(body.get('needs_person_removal')).toBe('true');
+    expect(body.get('needs_animal_removal')).toBe('true');
   });
 });
 
@@ -245,5 +246,36 @@ describe('enhanceImage — policy refusals', () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(result.code).toBe('NO_IMAGE');
+  });
+});
+
+describe('enhanceImage — cleanup flags', () => {
+  it('sends both flags false when nothing needs removing', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(jsonResponse(200, { enhanced_image_url: 'data:image/png;base64,OK' }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await runToCompletion(enhanceImage(file(), 'warmer lighting'));
+
+    const body = fetchMock.mock.calls[0][1].body as FormData;
+    // Explicit 'false' rather than omitted: the server reads === "true",
+    // so an absent field and a false one behave alike, but a missing field
+    // in the log is indistinguishable from a client that forgot to send it.
+    expect(body.get('needs_person_removal')).toBe('false');
+    expect(body.get('needs_animal_removal')).toBe('false');
+  });
+
+  it('sends only the flag that applies', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(jsonResponse(200, { enhanced_image_url: 'data:image/png;base64,OK' }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await runToCompletion(enhanceImage(file(), 'warmer lighting', { animals: true }));
+
+    const body = fetchMock.mock.calls[0][1].body as FormData;
+    expect(body.get('needs_person_removal')).toBe('false');
+    expect(body.get('needs_animal_removal')).toBe('true');
   });
 });

@@ -48,10 +48,19 @@ const FRIENDLY_MESSAGES: Record<string, string> = {
 
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
+/* What the validator saw that the generation step should clean up. An
+ * object rather than a growing list of positional booleans - the previous
+ * signature already had one dead parameter in the middle of it, and
+ * enhanceImage(file, prompt, false, true) tells a reader nothing. */
+export interface CleanupFlags {
+  people?: boolean;
+  animals?: boolean;
+}
+
 export async function enhanceImage(
   imageFile: File,
   prompt: string,
-  needsPersonRemoval = false
+  cleanup: CleanupFlags = {}
 ): Promise<EnhancementResult> {
   let lastResult: EnhancementResult = { success: false, error: 'Failed to enhance image.' };
 
@@ -62,7 +71,8 @@ export async function enhanceImage(
       const formData = new FormData();
       formData.append('image', imageFile);
       formData.append('prompt', composedPrompt);
-      formData.append('needs_person_removal', needsPersonRemoval.toString());
+      formData.append('needs_person_removal', String(cleanup.people === true));
+      formData.append('needs_animal_removal', String(cleanup.animals === true));
 
       const response = await fetch(ENHANCE_API_URL, {
         method: 'POST',

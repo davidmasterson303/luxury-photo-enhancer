@@ -41,8 +41,17 @@ const VALIDATION_SCHEMA = {
     hasPrimarySubject: { type: "boolean" },
     qualityIssues: { type: "array", items: { type: "string" } },
     needsPersonRemoval: { type: "boolean" },
+    animalCount: { type: "integer" },
+    needsAnimalRemoval: { type: "boolean" },
   },
-  required: ["faceCount", "hasPrimarySubject", "qualityIssues", "needsPersonRemoval"],
+  required: [
+    "faceCount",
+    "hasPrimarySubject",
+    "qualityIssues",
+    "needsPersonRemoval",
+    "animalCount",
+    "needsAnimalRemoval",
+  ],
 } as const;
 
 /* Only the field we read. Gemini parts also carry inlineData and other
@@ -58,6 +67,8 @@ interface ValidationAnalysis {
   hasPrimarySubject?: boolean;
   qualityIssues?: string[];
   needsPersonRemoval?: boolean;
+  animalCount?: number;
+  needsAnimalRemoval?: boolean;
 }
 
 function arrayBufferToBase64(buffer: ArrayBuffer): string {
@@ -144,16 +155,27 @@ EXAMPLES OF WHAT TO IGNORE:
 - A face on a poster, screen, or photograph within the photo
 - Partial faces that are mostly cut off
 
+COUNTING ANIMALS:
+- Count real animals physically present in the scene: pets being held, a dog at the subject's feet, a cat on a lap, a horse beside them
+- Apply the same conservative rule as for people: when in doubt, count zero
+- DO NOT count: animals printed on clothing, logos, toys, plush animals, artwork,
+  patterns, animals on a screen or poster, or anything not a live animal in the scene
+
 QUALITY ASSESSMENT:
-- Only flag quality issues if they are SEVERE (completely dark, extremely blurry to the point faces aren't recognizable, etc)
-- Minor quality issues are acceptable
+- Report quality observations as information, not as grounds for refusal
+- Poor lighting, soft focus, a cluttered background and awkward cropping are all
+  things the enhancement step exists to fix — note them, do not treat them as fatal
+- Reserve this list for genuinely severe problems (completely dark, so blurred the
+  face is unrecognizable)
 
 Provide your analysis in this EXACT JSON format:
 {
   "faceCount": <number - count only complete, distinct people>,
   "hasPrimarySubject": <boolean - is there one clear main person?>,
   "qualityIssues": ["list only SEVERE issues"],
-  "needsPersonRemoval": <boolean - are there clearly 2 or more complete people that need removal?>
+  "needsPersonRemoval": <boolean - are there clearly 2 or more complete people?>,
+  "animalCount": <number - live animals physically in the scene>,
+  "needsAnimalRemoval": <boolean - is at least one live animal present?>
 }`;
 
     const requestBody = {
@@ -260,26 +282,33 @@ Provide your analysis in this EXACT JSON format:
     const hasPrimarySubject = analysisResult.hasPrimarySubject !== false;
     const qualityIssues = analysisResult.qualityIssues || [];
     const needsPersonRemoval = analysisResult.needsPersonRemoval || false;
+    const animalCount = analysisResult.animalCount || 0;
+    const needsAnimalRemoval = analysisResult.needsAnimalRemoval || false;
 
-    debugLog("Parsed analysis:", { faceCount, hasPrimarySubject, qualityIssues, needsPersonRemoval });
+    debugLog("Parsed analysis:", {
+      faceCount, hasPrimarySubject, qualityIssues,
+      needsPersonRemoval, animalCount, needsAnimalRemoval,
+    });
 
-    let isValid = true;
-    let errorMessage = null;
-
-    if (faceCount === 0) {
-      isValid = false;
-      errorMessage = "No face detected in the image. Please upload a clear photo showing your face.";
-    } else if (qualityIssues.length > 0 && qualityIssues.some((issue: string) =>
-      issue.toLowerCase().includes('extremely') ||
-      issue.toLowerCase().includes('completely') ||
-      issue.toLowerCase().includes('severely') ||
-      issue.toLowerCase().includes('totally') ||
-      issue.toLowerCase().includes('very dark') ||
-      issue.toLowerCase().includes('unrecognizable')
-    )) {
-      isValid = false;
-      errorMessage = "Image quality issues detected. Please use a clearer, well-lit photo.";
-    }
+    /* -- One rejection, and only one -------------------------------------
+     *
+     * This used to bounce photos for severe quality problems as well. That
+     * was the wrong instinct for what this product does: dim lighting, soft
+     * focus and a cluttered room are the things the enhancement step is FOR.
+     * Refusing them sent people back to the upload screen to solve, by
+     * themselves, the exact problem they came here to have solved.
+     *
+     * Extra people and pets are likewise no longer grounds for refusal —
+     * the image model can remove them, so they are flagged for cleanup and
+     * the upload proceeds.
+     *
+     * What remains is the one case where there is nothing to work with: no
+     * face in the frame. A portrait of nobody cannot be generated, and
+     * saying so immediately beats spending four calls to fail. */
+    const isValid = faceCount > 0;
+    const errorMessage = isValid
+      ? null
+      : "No face detected in the image. Please upload a clear photo showing your face.";
 
     return new Response(
       JSON.stringify({
@@ -287,9 +316,11 @@ Provide your analysis in this EXACT JSON format:
         error: errorMessage,
         faceCount,
         needsPersonRemoval: faceCount >= 2 || needsPersonRemoval,
+        needsAnimalRemoval: animalCount >= 1 || needsAnimalRemoval,
         metadata: {
           hasPrimarySubject,
           qualityIssues,
+          animalCount,
         }
       }),
       {

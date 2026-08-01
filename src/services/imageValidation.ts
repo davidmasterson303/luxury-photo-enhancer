@@ -5,6 +5,10 @@ export interface ValidationResult {
   error?: string;
   faceCount?: number;
   needsPersonRemoval?: boolean;
+  /* Live animals in the scene. Flagged for removal rather than refusal —
+   * a dog in the shot is not a reason to send someone back to the upload
+   * screen when the image model can take it out. */
+  needsAnimalRemoval?: boolean;
   /* Set only for BUDGET_EXHAUSTED. Callers use it to show the capacity
    * screen rather than the "try another photo" toast. */
   code?: string;
@@ -12,7 +16,7 @@ export interface ValidationResult {
    * through anyway. `isValid: true` alone cannot distinguish "checked
    * and fine" from "never checked" — which is how a dead validator
    * stayed invisible for months. Callers must not read faceCount or
-   * needsPersonRemoval when this is set. */
+   * needsPersonRemoval/needsAnimalRemoval when this is set. */
   validationSkipped?: boolean;
 }
 
@@ -56,6 +60,7 @@ export async function validateImageForProfile(imageFile: File): Promise<Validati
       error: result.error,
       faceCount: result.faceCount,
       needsPersonRemoval: result.needsPersonRemoval || false,
+      needsAnimalRemoval: result.needsAnimalRemoval || false,
     };
   } catch (error) {
     // Network/connection error — pass through rather than blocking
