@@ -20,6 +20,7 @@ function mockFetchOnce(status: number, body: Record<string, unknown>) {
 }
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
@@ -47,15 +48,21 @@ describe('enhanceImage budget handling', () => {
   });
 
   it('still retries an ordinary upstream failure', async () => {
+    // Fake timers: this is the one test here that reaches the backoff, and
+    // waiting out a real 2s+ jittered delay was most of the suite's total
+    // runtime. See enhanceImage.retry.test.ts for the same pattern.
+    vi.useFakeTimers();
     const fetchMock = mockFetchOnce(502, { error: 'upstream', code: 'UPSTREAM_ERROR' });
 
-    const result = await enhanceImage(file(), 'warmer lighting');
+    const pending = enhanceImage(file(), 'warmer lighting');
+    await vi.runAllTimersAsync();
+    const result = await pending;
 
     // Two attempts total — the budget path must not have disabled retry
     // for everything else.
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(result.success).toBe(false);
-  }, 10_000);
+  });
 
   it('returns the image on a successful first attempt', async () => {
     const fetchMock = mockFetchOnce(200, { enhanced_image_url: 'data:image/png;base64,AAAA' });
