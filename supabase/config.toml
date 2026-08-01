@@ -5,10 +5,16 @@
 # and a retired model ID sat in validate-image for months unnoticed.
 # CI deploys them now, and this file is what CI reads.
 #
-# project_id is the default target. CI passes --project-ref explicitly
-# (derived from the VITE_SUPABASE_URL secret) so that repointing the demo
-# at a different project is a one-secret change, and that flag wins over
-# this value.
+# project_id is the default target. CI still passes --project-ref explicitly,
+# derived from the VITE_SUPABASE_URL secret, but it now asserts that the two
+# agree and fails the deploy if they do not.
+#
+# So repointing the demo at another project is a TWO-step change: update the
+# VITE_SUPABASE_URL secret AND this line, in either order. That is deliberate.
+# The earlier design made it one step and called that a feature; what it
+# actually did was let the secret drift away from the repo silently, which is
+# how the front end shipped against a deleted project. A deploy that stops and
+# names both values beats a deploy that guesses which one you meant.
 project_id = "yfstictbmgguktlxeasr"
 
 # verify_jwt is ON deliberately, and stating it here is the point of this

@@ -60,6 +60,38 @@ jobs:
             echo "NETLIFY_SITE_ID:    Netlify > this site > Site configuration > Site ID"
             exit 1
           fi
+
+      # [!] Same assertion as deploy-functions. Duplicated on purpose, in the
+      # spirit of models.ts/guards.ts/budget.ts: change one, change both.
+      #
+      # It has to be in BOTH jobs, not one. These two deploys are independent
+      # by design (see deploy-functions) and run in parallel, so guarding only
+      # the functions job would have produced precisely today's outcome — a red
+      # functions run sitting next to a green Netlify deploy that shipped a
+      # front end wired to a project that no longer exists. The visitor sees the
+      # front end, not the red X.
+      - name: Verify the Supabase URL matches the repo's project
+        env:
+          SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+        run: |
+          ref=$(printf '%s' "$SUPABASE_URL" | sed -nE 's#^https://([a-z0-9]+)\.supabase\.co/?$#\1#p')
+          cfg=$(sed -nE 's/^project_id[[:space:]]*=[[:space:]]*"([a-z0-9]+)".*/\1/p' supabase/config.toml)
+          if [ -z "$ref" ]; then
+            echo "::error::Could not parse a project ref from VITE_SUPABASE_URL."
+            echo "Expected the form https://<ref>.supabase.co"
+            exit 1
+          fi
+          if [ -z "$cfg" ]; then
+            echo "::error::Could not read project_id from supabase/config.toml."
+            exit 1
+          fi
+          if [ "$ref" != "$cfg" ]; then
+            echo "::error::VITE_SUPABASE_URL points at '$ref' but supabase/config.toml says '$cfg'."
+            echo "One of them is stale. Fix before deploying the front end."
+            exit 1
+          fi
+          echo "Building against project $ref (matches config.toml)"
+
       - uses: actions/setup-node@v5
         with:
           # Must satisfy jsdom's engines (^22.22.2 || ^24.15.0 || >=26).
@@ -106,10 +138,20 @@ jobs:
             exit 1
           fi
 
-      # Derived rather than stored separately, so pointing the demo at another
-      # project stays a one-secret change. The ref living in two places is how
-      # the front end ended up built against a deleted project.
-      - name: Derive project ref from the Supabase URL
+      # The ref lives in two places and will continue to. What broke the front
+      # end was not the duplication — it was that nothing ever compared the two
+      # copies, so a stale secret went unnoticed until the demo was dead.
+      # Deriving the flag from the secret does not fix that; it only decides
+      # which copy silently wins. So: assert instead.
+      #
+      # Blast radius is why this matters more here than for the front end. A
+      # stale secret gave us a dead front end. The same stale secret in this
+      # job means deploying edge functions to whatever project that ref names.
+      # Today that ref is a deleted project and the CLI fails loudly. It would
+      # not have to be — a live project belonging to someone else fails silently
+      # and successfully. Once the two must agree, which one we derive from
+      # stops mattering; the comparison is the point.
+      - name: Resolve and verify the target project ref
         env:
           SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
         run: |
@@ -119,8 +161,18 @@ jobs:
             echo "Expected the form https://<ref>.supabase.co"
             exit 1
           fi
+          cfg=$(sed -nE 's/^project_id[[:space:]]*=[[:space:]]*"([a-z0-9]+)".*/\1/p' supabase/config.toml)
+          if [ -z "$cfg" ]; then
+            echo "::error::Could not read project_id from supabase/config.toml."
+            exit 1
+          fi
+          if [ "$ref" != "$cfg" ]; then
+            echo "::error::VITE_SUPABASE_URL points at '$ref' but supabase/config.toml says '$cfg'."
+            echo "One of them is stale. Fix before deploying functions."
+            exit 1
+          fi
           echo "PROJECT_REF=$ref" >> "$GITHUB_ENV"
-          echo "Deploying functions to project $ref"
+          echo "Deploying functions to project $ref (matches config.toml)"
 
       - uses: supabase/setup-cli@v1
         with:
