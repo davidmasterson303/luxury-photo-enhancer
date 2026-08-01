@@ -213,3 +213,37 @@ describe('enhanceImage — request shape', () => {
     expect(body.get('needs_person_removal')).toBe('true');
   });
 });
+
+describe('enhanceImage — policy refusals', () => {
+  it('does not retry IMAGE_BLOCKED', async () => {
+    // A refusal is a verdict on the photo. Retrying costs a second
+    // generation call per slot, four slots, for the same answer.
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 502,
+      json: async () => ({
+        error: 'This photo could not be processed. Please try a different one.',
+        code: 'IMAGE_BLOCKED',
+      }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await runToCompletion(enhanceImage(file(), 'warmer lighting'));
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(result.code).toBe('IMAGE_BLOCKED');
+    expect(result.error).toBe('This photo could not be processed. Please try a different one.');
+  });
+
+  it('still retries NO_IMAGE, which is a transient empty response', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(jsonResponse(502, { error: 'none', code: 'NO_IMAGE' }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await runToCompletion(enhanceImage(file(), 'warmer lighting'));
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(result.code).toBe('NO_IMAGE');
+  });
+});

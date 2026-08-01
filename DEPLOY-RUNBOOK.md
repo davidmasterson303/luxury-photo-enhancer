@@ -180,7 +180,8 @@ Functions → `enhance-image` → Logs**, then look for the line beginning
 | `404` / model not found | Most likely. The deployed function still calls a retired model ID | Ship the functions from CI (`SUPABASE_ACCESS_TOKEN`) |
 | `429` | Rate or quota ceiling | Google quota, or the per-IP limiter in `guards.ts` |
 | `403` / PERMISSION_DENIED / billing | Unlikely — see below, but cheap to confirm from this line | Google Cloud → Billing |
-| No `Gemini API Error:` line at all | The request never reached Gemini | Guards, auth, or the budget check refusing first |
+| `Gemini returned no image.` with a `finishReason` | Gemini answered 200 and declined to produce a picture — a content/policy refusal, not a fault. Client sees `IMAGE_BLOCKED` | Nothing to fix server-side; the photo or prompt is being refused |
+| Neither line at all | The request never reached Gemini | Guards, auth, or the budget check refusing first |
 
 Check this **before** debugging the Supabase side. Several root causes share one
 error message, and the log is the only place they separate.

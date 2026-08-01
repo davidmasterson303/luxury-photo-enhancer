@@ -216,6 +216,44 @@ Deno.serve(async (req: Request) => {
       }
     }
 
+    /* Reaching here means Gemini answered 200 and sent no image, which is
+     * what a policy refusal looks like: the request succeeded, the model
+     * declined to produce a picture. The !response.ok branch above never
+     * fires for it, so before this existed the function returned NO_IMAGE
+     * having logged precisely nothing — a silent failure that presents as
+     * "This one didn't develop" with no trail anywhere.
+     *
+     * Deliberately selective about what goes in the log. The verbose
+     * logging in validate-image was removed because it printed the model's
+     * analysis of a user's photo, and that reasoning applies here: record
+     * why the generation stopped, never the content it was given. */
+    const candidate = result.candidates?.[0];
+    console.error("Gemini returned no image.", JSON.stringify({
+      finishReason: candidate?.finishReason,
+      safetyRatings: candidate?.safetyRatings,
+      promptFeedback: result.promptFeedback,
+      partKinds: (candidate?.content?.parts ?? []).map((p: Record<string, unknown>) =>
+        Object.keys(p).join("+")
+      ),
+    }));
+
+    /* A refusal is a verdict on this image, not a transient fault. Retrying
+     * spends a second generation call to be told the same thing, times four
+     * slots. Distinguished from NO_IMAGE so the client can stop rather than
+     * retry, and so the UI can say something truthful instead of implying
+     * the photo merely failed to develop. */
+    const stopped = candidate?.finishReason;
+    if (stopped && stopped !== "STOP" && stopped !== "MAX_TOKENS") {
+      return jsonResponse(
+        {
+          error: "This photo could not be processed. Please try a different one.",
+          code: "IMAGE_BLOCKED",
+        },
+        502,
+        cors,
+      );
+    }
+
     return jsonResponse(
       { error: "No image was generated. Please try again.", code: "NO_IMAGE" },
       502,

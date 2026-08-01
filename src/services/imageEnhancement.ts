@@ -29,6 +29,10 @@ const NON_RETRYABLE = new Set([
   'PROMPT_NOT_SUPPORTED',
   'BAD_REQUEST',
   'UNAUTHORIZED',
+  /* A policy refusal is a verdict on this image, not a transient fault.
+   * Retrying spends a second generation call per slot - four of them - to
+   * be told the same thing. */
+  'IMAGE_BLOCKED',
   BUDGET_EXHAUSTED,
 ]);
 
@@ -37,6 +41,7 @@ const FRIENDLY_MESSAGES: Record<string, string> = {
   RATE_LIMITED: 'The atelier is momentarily busy. Please wait a moment and try again.',
   UPSTREAM_ERROR: 'The enhancement service had a hiccup. Please try again.',
   GENERATION_FAILED: 'That photo could not be enhanced. Try a different photo.',
+  IMAGE_BLOCKED: 'This photo could not be processed. Please try a different one.',
   NO_IMAGE: 'No image came back. Please try again.',
   INTERNAL_ERROR: 'Something went wrong on our side. Please try again.',
 };
