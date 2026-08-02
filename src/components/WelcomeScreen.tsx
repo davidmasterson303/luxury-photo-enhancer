@@ -116,7 +116,7 @@ export default function WelcomeScreen({ onSelectMode }: WelcomeScreenProps) {
                 </p>
               </div>
               <p className="pb-8 text-xs text-luxury-gray-medium leading-relaxed">
-                <span className="text-[#111111]">Privacy.</span> Photos are processed in memory and never stored &mdash; each session is ephemeral, encrypted in transit.
+                <span className="text-[#111111]">Privacy.</span> Photos are processed in memory and never stored &mdash; each session is ephemeral, encrypted in transit. Enhancement is performed by Google&rsquo;s Gemini API, which does not use your photo for model training.
               </p>
             </div>
           </div>

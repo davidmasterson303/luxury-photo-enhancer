@@ -426,11 +426,11 @@ function Footer() {
             <div className="pt-6 pb-2 grid grid-cols-1 sm:grid-cols-2 gap-6 border-t border-[#111111]/10 mt-4">
               <p className="text-xs text-luxury-gray-light leading-relaxed">
                 <span className="text-luxury-gray-medium">Privacy.</span>{' '}
-                All photos are processed in memory and never stored on our servers. Each session is ephemeral and encrypted in transit.
+                Photos are processed in memory and never stored on our servers or in any database. Enhancement is performed by Google&rsquo;s Gemini API, which processes images under a paid agreement and does not use them for model training. Each session is ephemeral and encrypted in transit.
               </p>
               <p className="text-xs text-luxury-gray-light leading-relaxed">
                 <span className="text-luxury-gray-medium">Enhancement.</span>{' '}
-                AI enhancements are applied to background, lighting, and attire only. Facial features are preserved exactly as photographed.
+                AI enhancements target background, lighting, attire and framing, with light retouching. Your likeness is preserved &mdash; the model is instructed to leave facial structure unchanged &mdash; but AI-generated results may vary subtly from the original.
               </p>
             </div>
           </div>
