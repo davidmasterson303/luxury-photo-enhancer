@@ -53,6 +53,49 @@ logging, and the hardened prompt rules. The last of those matters most — promp
 enforcement is currently client-side only, and a client-side rule is skipped by
 not being the client. `SUPABASE_ACCESS_TOKEN` is what closes it.
 
+### End of 1 Aug — where this stands
+
+Everything is committed and pushed. `origin/main` is at `0001a27`, working tree
+clean, 90 tests plus typecheck and lint green.
+
+CI #10: `build-and-test` green, `deploy` green, `deploy-functions` **red** on
+`Missing repository secrets: SUPABASE_ACCESS_TOKEN`.
+
+So the demo sits in a split state, and it is worth being precise about it because
+the halves disagree:
+
+| | State |
+|---|---|
+| Front end | **Current.** Bundle `index-VYdK4it8.js` — sends `needs_animal_removal`, knows `IMAGE_BLOCKED`, carries the hardened rules |
+| Edge functions | **30 July**, plus the dashboard hand-patch. Verified: `validate-image` returns no `needsAnimalRemoval` |
+
+What that means in practice:
+
+- **Uploads work.** The hand-patch is untouched and holding.
+- **Prompt enforcement is client-side only.** The injection probe still returns
+  an image. Anyone not using the browser skips the rules entirely.
+- **Animal detection is asked for and never answered.** The client sends the
+  flag; the deployed validator has no concept of it. Degrades silently to "no
+  animals", which is the safe direction but not the intended behaviour.
+- **`DAILY_CALL_BUDGET` would be a no-op** — the deployed function has no
+  `budget.ts`. Do not switch it on yet; it would prove nothing and confuse the
+  next person.
+
+**One action remains, and it is the same one.** `SUPABASE_ACCESS_TOKEN` in
+GitHub → Settings → Secrets and variables → Actions.
+
+The failure mode both previous attempts hit was the value not persisting through
+GitHub's sudo-mode re-authentication. **So the check that matters is seeing the
+row appear in the secrets list with a fresh "now" timestamp — not the paste
+succeeding.** If the token is no longer to hand: Supabase → avatar → Access
+Tokens → Generate new token (set a longer expiry than the 30-day default), and
+delete the unused `github-actions-lumiere` token while on that page.
+
+No re-push is needed afterwards. **Re-run failed jobs** on CI #10 replays against
+`0001a27`, which carries everything. Then, in one pass: the step 4b probes, a
+real photo containing a pet, `DAILY_CALL_BUDGET` with the `demo_usage` check, and
+the four-variation grid screenshot to replace the placeholder hero.
+
 ---
 
 ## Step 1 — Confirm the real project ref, by eye
