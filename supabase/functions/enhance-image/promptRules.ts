@@ -38,7 +38,7 @@ export const PROHIBITED_WORDS = [
   // Violence and weapons
   "weapon", "weapons", "gun", "guns", "rifle", "pistol", "knife",
   "blood", "bloody", "gore", "gory", "violent", "violence", "corpse",
-  "death", "execution",
+  "death", "execution", "explosion", "explosions", "combat",
   // Hate and extremism
   "nazi", "swastika", "hitler", "klan", "terrorist", "isis",
   // Drugs and intoxication
